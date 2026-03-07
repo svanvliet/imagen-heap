@@ -213,6 +213,16 @@ Advanced Mode is opt-in per session or globally. It reveals pipeline internals.
 | FR-056 | Import custom models from local filesystem (safetensors, GGUF, MLX format). | Imported model is registered in catalog and usable in generation. |
 | FR-057 | Import community LoRAs from filesystem or URL. | LoRA is registered; user can select it in generation; weight slider 0.0–1.5. |
 
+### 5.5b Adapter Management
+
+| ID | Requirement | Acceptance Criteria |
+|----|-------------|---------------------|
+| FR-058 | Adapter catalog: separate "Adapters" tab in Model Manager showing downloadable adapter models (Redux, ControlNet, LoRA, etc.) distinct from base generation models. | Adapters tab displays adapter name, type, compatible base models, size, license, download status. |
+| FR-059 | Redux adapter: gated HuggingFace model (`FLUX.1-Redux-dev`) downloadable from Adapters tab. Handles gate/auth errors with same token flow as base models. | User can download Redux adapter, see progress, handle auth/license errors identically to base model downloads. |
+| FR-060b | Inline adapter download: when user selects a character for generation and the required adapter (Redux) is not downloaded, show an inline download prompt in the sidebar with one-click download and progress. | User sees clear "Redux adapter required" callout with download button; download starts inline with progress bar; on completion, character generation works immediately. |
+| FR-061b | Adapter status check: backend can report whether a specific adapter is downloaded/cached without attempting to load it. | `get_adapters` RPC returns adapter list with `downloaded` boolean; frontend uses this to show correct UI state. |
+| FR-062b | Adapter deletion: user can delete downloaded adapters from Adapters tab to reclaim disk space. | Delete button removes adapter cache files; status updates to "available"; disk usage recalculated. |
+
 ### 5.6 Prompt Assistance
 
 | ID | Requirement | Acceptance Criteria |
