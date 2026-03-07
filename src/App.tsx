@@ -16,19 +16,21 @@ export default function App() {
 
   const backendStatus = useBackendStore((s) => s.status);
   const checkFirstRun = useModelStore((s) => s.checkFirstRun);
+  const loadModels = useModelStore((s) => s.loadModels);
   const [showWizard, setShowWizard] = useState(false);
 
-  // Check first run after backend connects
+  // Load models and check first run after backend connects
   useEffect(() => {
     log.info("Backend status changed:", backendStatus);
     if (backendStatus === "connected") {
-      log.info("Backend connected, checking first run...");
+      log.info("Backend connected, loading models and checking first run...");
+      loadModels();
       checkFirstRun().then((first) => {
         log.info("First run check result:", first);
         if (first) setShowWizard(true);
       });
     }
-  }, [backendStatus, checkFirstRun]);
+  }, [backendStatus, checkFirstRun, loadModels]);
 
   const handleWizardComplete = () => {
     setShowWizard(false);
