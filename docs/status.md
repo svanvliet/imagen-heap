@@ -90,6 +90,21 @@
   - Differentiated 401 auth-required vs 403 license-required errors
   - Tests: 34 Python + 16 frontend — all passing
   - Rust build: successful
+- **08:00** — Wizard completion + catalog validation:
+  - is_first_run now checks `.wizard_done` file (not catalog length) — wizard shows until explicitly completed
+  - mark_wizard_done wired through Python → Rust → TS → App.tsx
+  - Catalog validation: checks for .safetensors/.bin/.gguf files on load, prunes stale entries
+  - Disk usage follows symlinks and dedupes by inode (17GB now reported correctly, was 384 bytes)
+  - delete_model uses shutil.rmtree on full HF cache dir (blobs + snapshots)
+  - Delete confirmation UX: trash icon → Confirm/Cancel buttons
+  - Tests: 35 Python + 16 frontend — all passing
+- **08:35** — Download progress, reveal folder, reset wizard:
+  - Real download progress: polls HF cache dir size every 1.5s during download
+  - Progress bar shows actual bytes downloaded / total, smooth transitions
+  - "Reveal in Finder" button (folder icon) on downloaded models using tauri-plugin-opener
+  - "Re-run Setup Wizard" button in Model Manager header
+  - reset_wizard + get_model_path RPC handlers added
+  - Tests: 35 Python + 16 frontend — all passing
 
 ### Commits
 | Hash | Milestone | Description |
@@ -109,3 +124,12 @@
 | `9ee2e18` | M2b | fix: differentiate 403 license-required from 401 auth-required |
 | `a47b8b5` | M2b | feat: add non-gated pre-quantized FLUX model as default |
 | `dd96f10` | M2b | feat: background downloads with status bar indicator |
+| `b770c2f` | M2b | docs: update status with background downloads and non-gated model |
+| `5101cc2` | M2b | fix: wizard_done flag, disk usage calc, mark_wizard_done wiring |
+| `38a011d` | M2b | fix: catalog validation, proper HF cache deletion, delete confirmation UX |
+| `73bc0b5` | M2b | feat: real download progress, reveal folder, reset wizard |
+
+### Test Counts
+- Python: 35 tests passing
+- Frontend: 16 tests passing (vitest)
+- Rust: cargo check passes
