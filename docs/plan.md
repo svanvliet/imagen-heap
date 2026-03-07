@@ -153,11 +153,11 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 
 The MVP is broken into 10 milestones. Each milestone produces a working, testable increment.
 
-> **Implementation note (M1–M3 status):** M1 (scaffold), M2 (generation UI/pipeline with StubProvider), and M3 (model management with simulated downloads) are complete. The UI, RPC pipeline, and Tauri commands are fully wired. M2b below replaces the stubs with real inference.
+> **Implementation note (M1–M3 + M2b status):** M1 (scaffold), M2 (generation UI/pipeline with StubProvider), and M3 (model management) are complete. M2b (real inference & downloads) is nearly complete — MLXProvider, real HuggingFace downloads with progress/auth/resume, background threaded downloads, and full Model Manager UX are done. Remaining: end-to-end generation test (2b.5). Two real FLUX models are downloaded and verified: flux-schnell-mflux-q8 (17GB) and flux-dev-q8 (54GB).
 
 ---
 
-### Milestone 1: Project Scaffold & Core Shell
+### Milestone 1: Project Scaffold & Core Shell ✅
 
 **Goal:** Tauri + React app runs, Python sidecar launches and responds to ping, basic UI shell renders.
 
@@ -247,7 +247,7 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ---
 
-### Milestone 2: Basic Image Generation (Text-to-Image)
+### Milestone 2: Basic Image Generation (Text-to-Image) ✅
 
 **Goal:** User types a prompt, clicks Generate, sees an image. Fast Draft and Quality profiles work. Metadata is persisted.
 
@@ -330,7 +330,7 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ---
 
-### Milestone 2b: Real Inference & Model Downloads
+### Milestone 2b: Real Inference & Model Downloads 🚧
 
 **Goal:** Replace stubs with real FLUX image generation on Apple Silicon via MLX, and real HuggingFace model downloads with progress. After this milestone, the user can generate actual images.
 
@@ -338,13 +338,14 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 #### Tasks
 
-**2b.1 — Install inference dependencies**
+**2b.1 — Install inference dependencies** ✅
 - Add `mflux` to Python dependencies (brings in `mlx`, `huggingface_hub`, `transformers`, `tokenizers`, `sentencepiece`)
 - `mflux` is a minimal FLUX-on-MLX library purpose-built for Apple Silicon
 - Verify installation works on the target machine (M-series Mac)
 - Pin versions for reproducibility
+- *Done: mflux 0.16.8, MLX 0.30.6, mlx-metal 0.30.6*
 
-**2b.2 — MLXProvider implementation**
+**2b.2 — MLXProvider implementation** ✅
 - Create `MLXProvider` class in `python/src/imagen_heap/providers/mlx_provider.py`:
   - `load_model(model_id, quantization)` → initializes `mflux.Flux1` with appropriate model variant and quantization level
   - `unload_model()` → releases model from memory, triggers GC
@@ -357,19 +358,30 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 - Step-level progress via mflux's callback mechanism
 - Save generated images as PNG with metadata, generate 256px thumbnail
 - Graceful error handling: catch OOM, model-not-found, unsupported-hardware
+- *Done: supports both standard (quantize param) and pre-quantized (model_path) models*
 
-**2b.3 — Real HuggingFace model downloads**
+**2b.3 — Real HuggingFace model downloads** ✅
 - Replace `ModelManager.simulate_download()` with real download using `huggingface_hub`:
-  - `huggingface_hub.snapshot_download(repo_id, ...)` with progress callback
-  - Download to `~/.imagen-heap/models/` directory
+  - `huggingface_hub.snapshot_download(repo_id, ...)` with progress polling (1.5s interval)
+  - Downloads to HuggingFace cache (`~/.cache/huggingface/hub/`) — mflux finds them automatically
   - Map registry entries to HuggingFace repo IDs
-  - Progress reported back to frontend via existing JSON-RPC notification mechanism
+  - Progress reported back to frontend via JSON-RPC notification mechanism
 - Update model registry with correct HuggingFace repo IDs, actual file sizes
-- Catalog tracks real download paths and timestamps
-- Support download cancellation (interrupt the download thread)
-- Disk usage tracking scans actual files on disk
+- Catalog tracks real download paths and timestamps; validates files exist on load (prunes stale entries)
+- Download resume handled by huggingface_hub (.incomplete files + HTTP range requests)
+- Disk usage tracking follows symlinks and dedupes by inode
+- *Additional work done beyond original plan:*
+  - HF token save/load for gated repos (AUTH_REQUIRED vs LICENSE_REQUIRED differentiation)
+  - Clickable URLs in error messages for accepting licenses
+  - Non-gated pre-quantized model added as default (dhairyashil/FLUX.1-schnell-mflux-8bit)
+  - Background threaded RPC server: download_model and generate run in threads so UI stays responsive
+  - Async Rust commands with tokio::spawn_blocking
+  - Delete with confirmation, shutil.rmtree for HF cache cleanup
+  - Reveal in Finder via tauri-plugin-opener
+  - Re-run Setup Wizard button
+  - Progress bar initializes at 0%, StatusBar download indicator clickable to open Model Manager
 
-**2b.4 — Provider auto-selection in pipeline**
+**2b.4 — Provider auto-selection in pipeline** ✅
 - Update `PipelineOrchestrator` and `create_server()` in `main.py`:
   - Try to initialize `MLXProvider` on startup
   - Fall back to `StubProvider` if MLX/mflux is not available (e.g., non-Apple hardware, missing deps)
@@ -377,7 +389,7 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 - Auto-load the default model on first generation (if downloaded)
 - Model switching: unload current → load requested
 
-**2b.5 — Integration verification**
+**2b.5 — Integration verification** 🚧
 - Test full flow: download model → generate image → view on canvas
 - Verify progress streaming works with real inference (step-by-step updates)
 - Verify memory reporting is accurate
@@ -388,56 +400,49 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ---
 
-### Milestone 3: Model Management
+### Milestone 3: Model Management ✅
 
 **Goal:** First-run model download, model catalog, license display, disk budgeting, quantization selection.
 
+> **Status:** Core functionality complete. Model registry, catalog with validation, FirstRunWizard (3-step), ModelManager modal with download/delete/reveal/auth/progress, disk usage. Some planned features (SHA-256 checksums, custom model import, disk budget bar chart, commercial-safe filter, quantization dropdown) are deferred to later milestones or polish.
+
 #### Tasks
 
-**3.1 — Model registry & catalog**
+**3.1 — Model registry & catalog** ✅
 - Python: `ModelManager` class
-  - Curated model registry (JSON manifest): FLUX.1-schnell, FLUX.1-dev, with Q4/Q8 variants
-  - Check which models are downloaded (scan model directory)
-  - Download model with progress (resumable via HTTP range requests)
-  - Verify SHA-256 checksum after download
-  - Delete model and free disk space
-  - Report disk usage per model and total
+  - Curated model registry: FLUX.1-schnell (Q4/Q8), FLUX.1-dev (Q4/Q8), plus non-gated mflux pre-quantized model
+  - Check which models are downloaded (catalog with path validation — checks for .safetensors/.bin/.gguf files, prunes stale entries)
+  - Download model with progress (real HuggingFace downloads, resumable via HTTP range requests)
+  - ~~Verify SHA-256 checksum after download~~ *(deferred — huggingface_hub handles integrity internally)*
+  - Delete model and free disk space (shutil.rmtree on full HF cache dir, with confirmation UX)
+  - Report disk usage per model and total (follows symlinks, dedupes by inode)
 
-**3.2 — First-run experience**
-- Detect first launch (no models downloaded, no settings configured)
-- **First-run wizard (modal overlay, 4 steps):**
-  1. **Welcome** — app name, one-liner description, "Let's get you set up" with illustration
-  2. **Storage** — choose where to store models and images (default: `~/.imagen-heap/`). Show available disk space.
-  3. **Model download** — shows default model set (FLUX.1-schnell Q8 + FLUX.1-dev Q8, ~12GB total). Progress bars per model. Option to select Q4 variants for smaller download. Download is resumable and cancelable.
-  4. **Test generation** — auto-generates a sample image with a built-in prompt ("A serene mountain landscape at golden hour, photorealistic"). Shows result. "You're ready to create!" confirmation.
-- Wizard state persisted so it resumes if interrupted
-- After setup completes: hand off to the **guided feature tour** (implemented in M9). Until M9 is built, first-run ends at the test generation step and drops the user into the main app.
+**3.2 — First-run experience** ✅
+- Detect first launch (`.wizard_done` file, not catalog-based)
+- **First-run wizard (modal overlay, 3 steps):**
+  1. **Welcome** — app name, one-liner description, storage path display
+  2. **Model download** — shows default model with download button, progress bars, HF token input for gated models, skip/continue options
+  3. **Complete** — "You're all set!" confirmation
+- Wizard state persisted via `.wizard_done` file; re-triggerable from Model Manager
+- ~~Test generation step~~ *(deferred to M2b.5 / M4 — generation UI not wired to wizard)*
+- ~~4 steps~~ → 3 steps (simpler, faster to first generation)
 
-**3.3 — Model Manager UI**
-- Accessible from Settings or a dedicated toolbar button
+**3.3 — Model Manager UI** ✅
+- Accessible from Toolbar (Database icon) and StatusBar (click download indicator)
 - **Model list view:**
   - Each model card shows: name, architecture badge, license badge (color-coded: green=Apache, yellow=non-commercial), file size, quantization level, memory estimate, download status
-  - Downloaded models: "Active" / "Delete" actions
-  - Available models: "Download" button with size estimate
-  - Download progress inline on the card
-- **Disk budget:**
-  - Bar chart showing total model storage used vs. budget
-  - Warning indicator at 80%
-  - Budget configurable in settings
-- **Import custom model:**
-  - "Import Model" button → file picker (safetensors, GGUF, MLX format)
-  - Prompts for metadata (name, architecture, license) if not auto-detected
-- **Commercial-safe filter toggle:**
-  - Switch in model manager header
-  - When on: hides non-commercial models, shows green "Commercial Safe" badge
+  - Downloaded models: "Installed" badge, "Reveal in Finder" button, "Delete" with confirmation
+  - Available models: "Download" button, animated progress with real bytes
+  - Error display with clickable URLs for license acceptance
+  - HF token input panel for gated repos
+- **Disk usage:** Total models + bytes shown in header
+- ~~Disk budget bar chart~~ *(deferred to M9 polish)*
+- ~~Import custom model~~ *(deferred to M7 Community Hub)*
+- ~~Commercial-safe filter toggle~~ *(deferred to M7)*
 
-**3.4 — Quantization selection**
-- Per model: dropdown showing available quantizations (Q4, Q8, FP16)
-- Each option shows: estimated memory usage, quality note ("Balanced" / "Compact / faster download" / "Full precision")
-- Default selection: Q8
-- Switching quantization triggers re-download of that variant
-
-**Deliverable:** First launch shows a polished setup wizard. User downloads models with progress. Model manager lets users browse, download, delete, and import models. License info is visible everywhere.
+**3.4 — Quantization selection** (partial)
+- Registry has Q4/Q8 variants per model
+- ~~Per-model dropdown in UI~~ *(deferred — models show as separate cards for now)*
 
 ---
 
@@ -1146,20 +1151,22 @@ Before committing to full implementation, these items should be validated with q
 ## Milestone Dependencies
 
 ```
-M1 (Scaffold) ──→ M2 (Generation) ──→ M3 (Models) ──→ M4 (Styles)
-                       │                                    │
-                       ├──→ M5 (Characters) ────────────────┤
-                       │                                    │
-                       └──→ M6 (Pose) ─────────────────────┤
-                                                            │
-                  M7 (Community Hub) ←── depends on M3 ────┤
-                                                            │
-                  M8 (Cloud) ←── depends on M2 ────────────┤
-                                                            │
-                  M9 (Export & Polish) ←── all above ──────┘
+M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) 🚧 → M4 (Styles)
+                         │                                        │
+                         ├→ M3 (Models) ✅ ───────────────────────┤
+                         │                                        │
+                         ├→ M5 (Characters) ──────────────────────┤
+                         │                                        │
+                         └→ M6 (Pose) ────────────────────────────┤
+                                                                  │
+                    M7 (Community Hub) ←── depends on M3 ────────┤
+                                                                  │
+                    M8 (Cloud) ←── depends on M2 ────────────────┤
+                                                                  │
+                    M9 (Export & Polish) ←── all above ──────────┘
 ```
 
-M1 → M2 is strictly sequential. After M2, milestones M3–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M9 is the integration and polish phase that depends on all others.
+M1 → M2 → M2b is strictly sequential. M3 was built in parallel with M2b. After M2b, milestones M4–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M9 is the integration and polish phase that depends on all others.
 
 ---
 

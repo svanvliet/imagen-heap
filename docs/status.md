@@ -1,6 +1,8 @@
 # Implementation Status
 
-## Current Phase: M2b — Real Inference & Model Downloads 🚧
+## Current Phase: M2b — Real Inference & Model Downloads (nearly complete) 🚧
+
+**Next up:** M2b.5 (end-to-end generation test), then M4 (Style Presets & Prompt Tools)
 
 ### Progress Log
 
@@ -105,6 +107,33 @@
   - "Re-run Setup Wizard" button in Model Manager header
   - reset_wizard + get_model_path RPC handlers added
   - Tests: 35 Python + 16 frontend — all passing
+- **08:38** — Clickable error URLs for gated models:
+  - License-required errors show "Accept license on HuggingFace ↗" clickable link
+  - Auth-required errors show "View model ↗" clickable link
+  - Applied to both ModelManager and FirstRunWizard
+- **08:45** — Threaded RPC server (fixes Model Manager hang during download):
+  - Python RPC server was single-threaded — download_model blocked all other requests
+  - Added `background=True` mode: download_model and generate run in threads
+  - Shared stdout write lock between RPC server and notification sender
+  - Model Manager now opens instantly even during active downloads
+- **08:47** — Download UX polish:
+  - Progress bar initializes at 0% (was starting mid-way from stale HF cache data)
+  - StatusBar download indicator is now clickable → opens Model Manager
+  - showModelManager state lifted from Toolbar-local to shared UI store
+- **08:55** — Verified FLUX.1-dev model integrity:
+  - 30 files, 53.9 GB, 0 broken symlinks, 0 incomplete blobs
+  - HuggingFace download resume confirmed working after app termination
+  - Two models now fully downloaded: flux-schnell-mflux-q8 (17GB) + flux-dev-q8 (54GB)
+
+### What's Done (M2b status)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| 2b.1 Install inference deps | ✅ Done | mflux 0.16.8, MLX 0.30.6 |
+| 2b.2 MLXProvider | ✅ Done | load_model, text_to_image, device/memory info |
+| 2b.3 Real HF downloads | ✅ Done | snapshot_download, progress polling, resume, auth/license handling |
+| 2b.4 Provider auto-selection | ✅ Done | MLXProvider with StubProvider fallback |
+| 2b.5 Integration verification | 🚧 Next | Need to test actual image generation end-to-end |
 
 ### Commits
 | Hash | Milestone | Description |
@@ -128,6 +157,10 @@
 | `5101cc2` | M2b | fix: wizard_done flag, disk usage calc, mark_wizard_done wiring |
 | `38a011d` | M2b | fix: catalog validation, proper HF cache deletion, delete confirmation UX |
 | `73bc0b5` | M2b | feat: real download progress, reveal folder, reset wizard |
+| `47362b9` | M2b | docs: update status with catalog validation, progress, reveal folder |
+| `266ae09` | M2b | fix: make URLs in gated model errors clickable |
+| `822b529` | M2b | fix: RPC server runs downloads/generation in background threads |
+| `fe2ec80` | M2b | fix: progress bar starts at 0, status bar download opens Model Manager |
 
 ### Test Counts
 - Python: 35 tests passing
