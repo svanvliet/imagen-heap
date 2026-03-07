@@ -97,6 +97,8 @@ export const useModelStore = create<ModelState>((set, get) => ({
       const newDownloading = new Set(get().downloadingModels);
       newDownloading.delete(modelId);
       set({ downloadingModels: newDownloading });
+      // Re-throw so callers can handle the error
+      throw err;
     }
   },
 
