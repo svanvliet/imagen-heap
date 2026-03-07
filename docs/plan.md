@@ -151,7 +151,9 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 
 ## Milestones
 
-The MVP is broken into 9 milestones. Each milestone produces a working, testable increment.
+The MVP is broken into 10 milestones. Each milestone produces a working, testable increment.
+
+> **Implementation note (M1–M3 status):** M1 (scaffold), M2 (generation UI/pipeline with StubProvider), and M3 (model management with simulated downloads) are complete. The UI, RPC pipeline, and Tauri commands are fully wired. M2b below replaces the stubs with real inference.
 
 ---
 
@@ -328,6 +330,64 @@ The MVP is broken into 9 milestones. Each milestone produces a working, testable
 
 ---
 
+### Milestone 2b: Real Inference & Model Downloads
+
+**Goal:** Replace stubs with real FLUX image generation on Apple Silicon via MLX, and real HuggingFace model downloads with progress. After this milestone, the user can generate actual images.
+
+> **Why a separate milestone:** M2 established the full UI pipeline with a StubProvider. M2b swaps in the real inference engine without changing any frontend code — only the Python backend changes. This also pulls forward the minimum viable download logic from M7 (Community Hub) since real models are a prerequisite for real generation.
+
+#### Tasks
+
+**2b.1 — Install inference dependencies**
+- Add `mflux` to Python dependencies (brings in `mlx`, `huggingface_hub`, `transformers`, `tokenizers`, `sentencepiece`)
+- `mflux` is a minimal FLUX-on-MLX library purpose-built for Apple Silicon
+- Verify installation works on the target machine (M-series Mac)
+- Pin versions for reproducibility
+
+**2b.2 — MLXProvider implementation**
+- Create `MLXProvider` class in `python/src/imagen_heap/providers/mlx_provider.py`:
+  - `load_model(model_id, quantization)` → initializes `mflux.Flux1` with appropriate model variant and quantization level
+  - `unload_model()` → releases model from memory, triggers GC
+  - `text_to_image(...)` → calls `flux.generate_image()`, saves result to output directory, returns file path
+  - `get_device_info()` → returns Apple Silicon chip info, total memory, OS version
+  - `get_memory_status()` → returns current MLX memory usage via `mlx.core`
+- Map our model registry IDs to mflux model names:
+  - `flux-schnell-*` → `mflux.Flux1(model="schnell", quantize=N)`
+  - `flux-dev-*` → `mflux.Flux1(model="dev", quantize=N)`
+- Step-level progress via mflux's callback mechanism
+- Save generated images as PNG with metadata, generate 256px thumbnail
+- Graceful error handling: catch OOM, model-not-found, unsupported-hardware
+
+**2b.3 — Real HuggingFace model downloads**
+- Replace `ModelManager.simulate_download()` with real download using `huggingface_hub`:
+  - `huggingface_hub.snapshot_download(repo_id, ...)` with progress callback
+  - Download to `~/.imagen-heap/models/` directory
+  - Map registry entries to HuggingFace repo IDs
+  - Progress reported back to frontend via existing JSON-RPC notification mechanism
+- Update model registry with correct HuggingFace repo IDs, actual file sizes
+- Catalog tracks real download paths and timestamps
+- Support download cancellation (interrupt the download thread)
+- Disk usage tracking scans actual files on disk
+
+**2b.4 — Provider auto-selection in pipeline**
+- Update `PipelineOrchestrator` and `create_server()` in `main.py`:
+  - Try to initialize `MLXProvider` on startup
+  - Fall back to `StubProvider` if MLX/mflux is not available (e.g., non-Apple hardware, missing deps)
+  - Log which provider is active
+- Auto-load the default model on first generation (if downloaded)
+- Model switching: unload current → load requested
+
+**2b.5 — Integration verification**
+- Test full flow: download model → generate image → view on canvas
+- Verify progress streaming works with real inference (step-by-step updates)
+- Verify memory reporting is accurate
+- Test with both schnell (4 steps, ~10s) and dev (25 steps, ~60s) if available
+- Confirm stub fallback still works when mflux is absent
+
+**Deliverable:** User downloads a real FLUX model (~6 GB), types a prompt, clicks Generate, and sees an actual AI-generated image on the canvas within ~10 seconds (schnell) or ~60 seconds (dev). Progress bar shows real step progress. The app falls back to StubProvider gracefully if MLX hardware is unavailable.
+
+---
+
 ### Milestone 3: Model Management
 
 **Goal:** First-run model download, model catalog, license display, disk budgeting, quantization selection.
@@ -347,7 +407,7 @@ The MVP is broken into 9 milestones. Each milestone produces a working, testable
 - Detect first launch (no models downloaded, no settings configured)
 - **First-run wizard (modal overlay, 4 steps):**
   1. **Welcome** — app name, one-liner description, "Let's get you set up" with illustration
-  2. **Storage** — choose where to store models and images (default: `~/Documents/ImagenHeap/`). Show available disk space.
+  2. **Storage** — choose where to store models and images (default: `~/.imagen-heap/`). Show available disk space.
   3. **Model download** — shows default model set (FLUX.1-schnell Q8 + FLUX.1-dev Q8, ~12GB total). Progress bars per model. Option to select Q4 variants for smaller download. Download is resumable and cancelable.
   4. **Test generation** — auto-generates a sample image with a built-in prompt ("A serene mountain landscape at golden hour, photorealistic"). Shows result. "You're ready to create!" confirmation.
 - Wizard state persisted so it resumes if interrupted

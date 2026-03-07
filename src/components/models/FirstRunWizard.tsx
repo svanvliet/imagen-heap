@@ -91,7 +91,7 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
                   <FolderOpen size={18} className="text-text-muted flex-shrink-0" />
                   <div>
                     <p className="font-medium text-text-primary">Storage</p>
-                    <p className="text-xs mt-0.5">~/Documents/ImagenHeap/</p>
+                    <p className="text-xs mt-0.5">~/.imagen-heap/</p>
                   </div>
                 </div>
               </div>

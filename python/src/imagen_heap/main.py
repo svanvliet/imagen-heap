@@ -60,10 +60,10 @@ def create_server() -> RpcServer:
     server = RpcServer()
     provider = StubProvider()
 
-    # Determine directories
+    # Determine directories — all data lives under ~/.imagen-heap/
     base_dir = os.environ.get(
         "IMAGEN_HEAP_DATA_DIR",
-        os.path.expanduser("~/Documents/ImagenHeap"),
+        os.path.expanduser("~/.imagen-heap"),
     )
     output_dir = os.path.join(base_dir, "generations")
     models_dir = os.path.join(base_dir, "models")
