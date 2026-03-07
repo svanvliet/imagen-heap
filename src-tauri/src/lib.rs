@@ -462,6 +462,18 @@ pub fn run() {
             writer: Arc::new(Mutex::new(None)),
         })
         .setup(move |app| {
+            // Set the window icon for dev mode (bundled builds use bundle.icon)
+            #[cfg(debug_assertions)]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    let icon_bytes = include_bytes!("../icons/128x128@2x.png");
+                    if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
+                        let _ = window.set_icon(icon);
+                    }
+                }
+            }
+
             let resource_dir = app
                 .path()
                 .resource_dir()
