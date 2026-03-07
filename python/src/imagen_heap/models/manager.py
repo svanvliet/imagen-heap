@@ -102,8 +102,15 @@ class ModelManager:
         ]
 
     def is_first_run(self) -> bool:
-        """Check if this is the first run (no models downloaded)."""
-        return len(self._catalog) == 0
+        """Check if this is the first run (wizard not yet completed)."""
+        wizard_done_path = self.models_dir / ".wizard_done"
+        return not wizard_done_path.exists()
+
+    def mark_wizard_done(self) -> None:
+        """Mark the first-run wizard as completed."""
+        wizard_done_path = self.models_dir / ".wizard_done"
+        wizard_done_path.write_text("done")
+        logger.info("First-run wizard marked as completed")
 
     def download_model(
         self,
@@ -255,8 +262,15 @@ class ModelManager:
         """Return total disk usage of downloaded models."""
         total = 0
         for model in self._catalog.values():
-            if os.path.exists(model.local_path):
-                total += os.path.getsize(model.local_path)
+            path = model.local_path
+            if os.path.isdir(path):
+                for dirpath, _dirnames, filenames in os.walk(path):
+                    for f in filenames:
+                        fp = os.path.join(dirpath, f)
+                        if os.path.exists(fp):
+                            total += os.path.getsize(fp)
+            elif os.path.isfile(path):
+                total += os.path.getsize(path)
         return {
             "used_bytes": total,
             "model_count": len(self._catalog),

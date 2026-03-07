@@ -158,6 +158,11 @@ def create_server() -> RpcServer:
         """Check if this is the first run."""
         return {"is_first_run": model_manager.is_first_run()}
 
+    def handle_mark_wizard_done(params: dict) -> dict:
+        """Mark the first-run wizard as completed."""
+        model_manager.mark_wizard_done()
+        return {"success": True}
+
     def handle_download_model(params: dict) -> dict:
         """Download a model from HuggingFace."""
         model_id = params.get("model_id", "")
@@ -200,6 +205,7 @@ def create_server() -> RpcServer:
     server.register("get_downloaded_models", handle_get_downloaded_models)
     server.register("get_default_downloads", handle_get_default_downloads)
     server.register("is_first_run", handle_is_first_run)
+    server.register("mark_wizard_done", handle_mark_wizard_done)
     server.register("download_model", handle_download_model)
     server.register("save_hf_token", handle_save_hf_token)
     server.register("delete_model", handle_delete_model)

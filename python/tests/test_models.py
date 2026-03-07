@@ -54,6 +54,9 @@ class TestModelManager:
 
     def test_after_download_not_first_run(self):
         self.manager._simulate_download("flux-schnell-q8")
+        # is_first_run is based on wizard completion, not downloads
+        assert self.manager.is_first_run()
+        self.manager.mark_wizard_done()
         assert not self.manager.is_first_run()
 
     def test_download_progress_callback(self):
@@ -67,11 +70,13 @@ class TestModelManager:
 
     def test_delete_model(self):
         self.manager._simulate_download("flux-schnell-q8")
+        self.manager.mark_wizard_done()
         assert not self.manager.is_first_run()
 
         result = self.manager.delete_model("flux-schnell-q8")
         assert result is True
-        assert self.manager.is_first_run()
+        # Wizard completion is independent of model state
+        assert not self.manager.is_first_run()
 
     def test_delete_nonexistent_model(self):
         assert self.manager.delete_model("nonexistent") is False
@@ -84,6 +89,7 @@ class TestModelManager:
 
     def test_catalog_persistence(self):
         self.manager._simulate_download("flux-schnell-q8")
+        self.manager.mark_wizard_done()
         # Create a new manager pointing at the same directory
         manager2 = ModelManager(self.tmp_dir)
         assert not manager2.is_first_run()

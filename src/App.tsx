@@ -5,6 +5,7 @@ import { useBackendStatus } from "@/hooks/useBackendStatus";
 import { useDownloadProgress } from "@/hooks/useDownloadProgress";
 import { useModelStore } from "@/stores/models";
 import { useBackendStore } from "@/stores/backend";
+import { markWizardDone } from "@/lib/tauri";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("App");
@@ -29,11 +30,16 @@ export default function App() {
     }
   }, [backendStatus, checkFirstRun]);
 
+  const handleWizardComplete = () => {
+    setShowWizard(false);
+    markWizardDone().catch((err) => log.error("Failed to mark wizard done:", err));
+  };
+
   return (
     <>
       <AppShell />
       {showWizard && (
-        <FirstRunWizard onComplete={() => setShowWizard(false)} />
+        <FirstRunWizard onComplete={handleWizardComplete} />
       )}
     </>
   );

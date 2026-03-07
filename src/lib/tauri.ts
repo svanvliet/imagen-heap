@@ -97,3 +97,8 @@ export async function getDiskUsage(): Promise<{ used_bytes: number; model_count:
 export async function saveHfToken(token: string): Promise<{ success: boolean }> {
   return invoke("save_hf_token", { token });
 }
+
+/** Mark the first-run wizard as completed */
+export async function markWizardDone(): Promise<{ success: boolean }> {
+  return invoke("mark_wizard_done");
+}
