@@ -1,8 +1,8 @@
 # Implementation Status
 
-## Current Phase: M2b — Real Inference & Model Downloads ✅ (generation working!)
+## Current Phase: M4 — Style Presets & Prompt Tools ✅
 
-**Next up:** M4 (Style Presets & Prompt Tools)
+**Next up:** M5 (Gallery & History)
 
 ### Progress Log
 
@@ -147,6 +147,34 @@
   - Image didn't render: Tauri WebView couldn't load local files → added assetProtocol scope in tauri.conf.json
   - Context menu clicks not working: document click handler was eating events → switched to mousedown with data-context-menu guard
 - **10:06** — Full end-to-end generation working with image display, filmstrip, metadata, context menus
+- **10:10** — M4.1+4.2 — Style presets system + visual grid:
+  - 8 style presets: Photo, Cinematic, Anime, Watercolor, Digital Art, Concept, Pixel, Line Art
+  - Each preset: prompt suffix, negative prompt, recommended CFG, gradient card with emoji icon
+  - 4-column grid in sidebar between Quality and Aspect Ratio
+  - Selected preset auto-applies to generation via getConfig() (prompt suffix + negative prompt merge)
+  - Style badge shown in canvas metadata for generated images
+  - `setStylePresetId` updates CFG when preset has recommendation
+- **10:14** — M4.3 — Prompt history with persistence:
+  - Auto-saves prompts to localStorage after successful generation (Zustand persist middleware)
+  - Searchable history dropdown on prompt textarea (clock icon)
+  - Relative timestamps ("2m ago", "yesterday") + style preset used
+  - Click to load, trash to delete, deduplicates entries
+  - Max 100 entries, most recent first
+- **10:16** — M4.4 — Prompt templates browser:
+  - 32 templates across 7 categories: Portrait, Landscape, Concept Art, Product, Character Design, Abstract, Architecture
+  - Searchable overlay panel with category sidebar navigation
+  - Click any template to load into prompt field
+  - FileText icon on prompt label to open, Escape/click-outside to close
+  - Clear button (×) on prompt label when text present
+
+### What's Done (M4 status)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| 4.1 Style preset system | ✅ Done | 8 presets in constants.ts, prompt suffix + negative prompt + recommended CFG |
+| 4.2 Style preset UI | ✅ Done | 4-col grid in sidebar, gradient cards, selected checkmark, "None" option |
+| 4.3 Prompt history | ✅ Done | localStorage persistence, searchable, timestamps, style badges, dedup |
+| 4.4 Prompt UX polish | ✅ Done | Auto-resize ✅, clear button ✅, template browser (32 templates, 7 categories) |
 
 ### What's Done (M2b status)
 
@@ -197,6 +225,10 @@
 | `a8f54f4` | M2b | fix: add protobuf dep for SentencePiece tokenizer loading |
 | `0c6c9cc` | M2b | fix: asset protocol scope for image rendering, context menu clicks |
 | `42af3b2` | M2b | fix: move asset protocol scope to tauri.conf.json |
+| `531e42f` | M2b | docs: update status.md — M2b complete |
+| `c218bb0` | M4 | feat: M4.1+4.2 — style presets with visual grid (8 styles) |
+| `f7d57c1` | M4 | feat: M4.3 — prompt history with search and persistence |
+| `587b46f` | M4 | feat: M4.4 — prompt templates browser (32 templates, 7 categories) |
 
 ### Test Counts
 - Python: 35 tests passing
