@@ -2,6 +2,7 @@ import { PromptInput } from "@/components/generation/PromptInput";
 import { QualityToggle } from "@/components/generation/QualityToggle";
 import { AspectRatioSelector } from "@/components/generation/AspectRatioSelector";
 import { ModelSelector } from "@/components/generation/ModelSelector";
+import { StylePresetGrid } from "@/components/generation/StylePresetGrid";
 import { AdvancedParams } from "@/components/generation/AdvancedParams";
 import { GenerateButton } from "@/components/generation/GenerateButton";
 
@@ -26,6 +27,14 @@ export function Sidebar() {
             Quality
           </label>
           <QualityToggle />
+        </div>
+
+        {/* Style presets */}
+        <div>
+          <label className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2 block">
+            Style
+          </label>
+          <StylePresetGrid />
         </div>
 
         {/* Aspect Ratio */}

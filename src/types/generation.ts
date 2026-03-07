@@ -5,6 +5,7 @@ export interface GenerationConfig {
   negativePrompt: string;
   seed: number;
   qualityProfile: "fast" | "quality";
+  stylePresetId?: string | null;
   aspectRatio: string;
   width: number;
   height: number;

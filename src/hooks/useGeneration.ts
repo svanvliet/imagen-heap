@@ -53,15 +53,16 @@ export function useGeneration() {
 
     try {
       console.log("[useGeneration] Starting generation with model:", modelId);
+      const config = useGenerationStore.getState().getConfig();
       const result = await generateImage({
-        prompt: state.prompt,
-        negative_prompt: state.negativePrompt,
+        prompt: config.prompt,
+        negative_prompt: config.negativePrompt,
         seed,
-        steps: state.steps,
-        cfg: state.cfg,
-        width: state.aspectRatio.width,
-        height: state.aspectRatio.height,
-        quality_profile: state.qualityProfile === "custom" ? "fast" : state.qualityProfile,
+        steps: config.steps,
+        cfg: config.cfg,
+        width: config.width,
+        height: config.height,
+        quality_profile: config.qualityProfile === "custom" ? "fast" : config.qualityProfile,
         model_id: modelId,
         sampler: "euler",
         scheduler: "normal",
@@ -78,6 +79,7 @@ export function useGeneration() {
           negativePrompt: state.negativePrompt,
           seed,
           qualityProfile: state.qualityProfile === "custom" ? "fast" : state.qualityProfile,
+          stylePresetId: state.stylePresetId,
           aspectRatio: state.aspectRatio.id,
           width: state.aspectRatio.width,
           height: state.aspectRatio.height,

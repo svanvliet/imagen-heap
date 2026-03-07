@@ -1,8 +1,9 @@
 import { useGenerationStore } from "@/stores/generation";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle } from "lucide-react";
+import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { STYLE_PRESETS } from "@/lib/constants";
 
 function ElapsedTimer() {
   const startTime = useGenerationStore((s) => s.generationStartTime);
@@ -225,6 +226,18 @@ export function Canvas() {
               <Maximize2 size={10} />
               {currentImage.config.width}×{currentImage.config.height}
             </span>
+            {currentImage.config.stylePresetId && (() => {
+              const preset = STYLE_PRESETS.find(p => p.id === currentImage.config.stylePresetId);
+              return preset ? (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Palette size={10} />
+                    {preset.icon} {preset.name}
+                  </span>
+                </>
+              ) : null;
+            })()}
           </div>
         </div>
       ) : generationError ? (

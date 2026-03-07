@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import type { GenerationResult, GenerationProgress } from "@/types";
-import { ASPECT_RATIOS, QUALITY_PROFILES } from "@/lib/constants";
+import { ASPECT_RATIOS, QUALITY_PROFILES, STYLE_PRESETS } from "@/lib/constants";
 import { randomSeed } from "@/lib/utils";
 
 interface GenerationState {
   prompt: string;
   negativePrompt: string;
   qualityProfile: "fast" | "quality" | "custom";
+  stylePresetId: string | null;
   aspectRatio: (typeof ASPECT_RATIOS)[number];
   seed: number;
   seedLocked: boolean;
@@ -22,6 +23,7 @@ interface GenerationState {
   setPrompt: (prompt: string) => void;
   setNegativePrompt: (negativePrompt: string) => void;
   setQualityProfile: (profile: "fast" | "quality") => void;
+  setStylePresetId: (presetId: string | null) => void;
   setAspectRatio: (ratioId: string) => void;
   setSeed: (seed: number) => void;
   setSeedLocked: (locked: boolean) => void;
@@ -35,12 +37,13 @@ interface GenerationState {
   selectHistoryItem: (index: number) => void;
   clearHistory: () => void;
 
-  /** Get the full generation config for the current state */
+  /** Get the full generation config for the current state, with style applied */
   getConfig: () => {
     prompt: string;
     negativePrompt: string;
     seed: number;
     qualityProfile: string;
+    stylePresetId: string | null;
     aspectRatio: string;
     width: number;
     height: number;
@@ -53,6 +56,7 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
   prompt: "",
   negativePrompt: "",
   qualityProfile: "fast",
+  stylePresetId: null,
   aspectRatio: ASPECT_RATIOS[0],
   seed: randomSeed(),
   seedLocked: false,
@@ -70,6 +74,18 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
   setQualityProfile: (profile) => {
     const p = QUALITY_PROFILES[profile];
     set({ qualityProfile: profile, steps: p.steps, cfg: 3.5 });
+  },
+  setStylePresetId: (presetId) => {
+    if (!presetId) {
+      set({ stylePresetId: null });
+      return;
+    }
+    const preset = STYLE_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const updates: Partial<GenerationState> = { stylePresetId: presetId };
+    if (preset.recommendedCfg !== null) updates.cfg = preset.recommendedCfg;
+    if (preset.recommendedSteps !== null) updates.steps = preset.recommendedSteps;
+    set(updates as GenerationState);
   },
   setAspectRatio: (ratioId) => {
     const ratio = ASPECT_RATIOS.find((r) => r.id === ratioId);
@@ -99,11 +115,26 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
 
   getConfig: () => {
     const s = get();
+    const preset = s.stylePresetId
+      ? STYLE_PRESETS.find((p) => p.id === s.stylePresetId) ?? null
+      : null;
+
+    // Apply style suffix to prompt
+    let finalPrompt = s.prompt;
+    if (preset) finalPrompt = s.prompt + preset.promptSuffix;
+
+    // Merge negative prompts
+    let finalNeg = s.negativePrompt;
+    if (preset?.negativePrompt) {
+      finalNeg = [s.negativePrompt, preset.negativePrompt].filter(Boolean).join(", ");
+    }
+
     return {
-      prompt: s.prompt,
-      negativePrompt: s.negativePrompt,
+      prompt: finalPrompt,
+      negativePrompt: finalNeg,
       seed: s.seed,
       qualityProfile: s.qualityProfile,
+      stylePresetId: s.stylePresetId,
       aspectRatio: s.aspectRatio.id,
       width: s.aspectRatio.width,
       height: s.aspectRatio.height,
