@@ -110,6 +110,18 @@ This launches the Tauri dev server with hot reload. On first launch, the setup w
 
 Produces `Imagen Heap.app` and a `.dmg` installer in `src-tauri/target/release/bundle/`.
 
+### 5. Publish a release
+
+```bash
+# Build + tag + push + create GitHub release with DMG attached
+./build.sh --release v0.2.0
+
+# With custom release notes
+./build.sh --release v0.2.0 --notes "Added gallery view and favorites"
+```
+
+The release script validates the semver tag, bumps the version in `tauri.conf.json` and `package.json`, commits the change, creates an annotated git tag, pushes everything, and publishes a GitHub release with the DMG. If no `--notes` are provided, a changelog is auto-generated from the git log.
+
 ## Project Structure
 
 ```

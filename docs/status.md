@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M4 — Style Presets & Prompt Tools ✅ | Polish pass complete
+## Current Phase: M4 — Style Presets & Prompt Tools ✅ | Polish pass complete | v0.1.0 released
 
 **Next up:** M5 (Gallery & History)
 
@@ -184,6 +184,18 @@
   - Model store persists: selectedModelId
   - Prompt history already persisted
   - Transient state (isGenerating, progress, errors) resets on reload
+- **11:22** — v0.1.0 release published:
+  - Fresh Tauri build → 4.4 MB DMG
+  - Annotated tag `v0.1.0` pushed to GitHub
+  - GitHub release created with DMG artifact and full release notes
+  - Release live at https://github.com/svanvliet/imagen-heap/releases/tag/v0.1.0
+- **11:30** — build.sh release automation:
+  - `build.sh` now supports `--release <tag>` and optional `--notes "..."` flags
+  - Auto-validates semver tag format (vX.Y.Z)
+  - Updates version in tauri.conf.json + package.json
+  - Commits version bump, creates annotated tag, pushes to origin
+  - Generates changelog from git log when no notes provided
+  - Creates GitHub release with DMG attached via `gh release create`
 - **11:02** — Icon refinements + dev mode icon:
   - Icon border doubled to 50px (2× thicker) for more visible inner stroke
   - Added `image-png` Tauri feature + `window.set_icon()` in debug builds so custom icon shows during `./run.sh`
@@ -203,8 +215,10 @@
 |------|--------|-------|
 | Context menus | ✅ Done | Boundary-aware (flip upward), delete from history, danger styling |
 | App icon | ✅ Done | Custom sparkle icon, all sizes, dev + build mode, favicon |
-| Build scripts | ✅ Done | run.sh (dev), build.sh (dist .app + .dmg) |
+| Build scripts | ✅ Done | run.sh (dev), build.sh (dist .app + .dmg + GitHub release) |
 | Settings persistence | ✅ Done | All generation/model settings persist via zustand + localStorage |
+| v0.1.0 release | ✅ Done | Tagged, built, published to GitHub Releases with DMG |
+| Release automation | ✅ Done | `./build.sh --release vX.Y.Z [--notes "..."]` |
 
 ### What's Done (M2b status)
 
@@ -264,6 +278,8 @@
 | `9291277` | — | fix: correct sparkle icon, favicon, persistent generation history |
 | `8b90cd2` | — | fix: persist all user settings and model selection across restarts |
 | `48d0e43` | — | fix: thicker icon border (2x), set window icon in dev mode |
+| `a78e218` | — | docs: update status.md and plan.md — M4 complete, polish pass done |
+| `a530998` | — | docs: add detailed README with screenshots, architecture, and roadmap |
 
 ### Test Counts
 - Python: 35 tests passing
