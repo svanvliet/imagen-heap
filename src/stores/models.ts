@@ -53,10 +53,13 @@ export const useModelStore = create<ModelState>((set, get) => ({
   checkFirstRun: async () => {
     try {
       const result = await isFirstRun();
+      console.log("[ModelStore] is_first_run result:", result);
       set({ isFirstRun: result.is_first_run });
       return result.is_first_run;
     } catch (err) {
       console.error("[ModelStore] Failed to check first run:", err);
+      // Default to showing wizard on error so user isn't stuck
+      set({ isFirstRun: true });
       return true;
     }
   },

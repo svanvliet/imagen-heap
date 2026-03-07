@@ -9,14 +9,16 @@ export default function App() {
   useBackendStatus();
 
   const backendStatus = useBackendStore((s) => s.status);
-  const isFirstRun = useModelStore((s) => s.isFirstRun);
   const checkFirstRun = useModelStore((s) => s.checkFirstRun);
   const [showWizard, setShowWizard] = useState(false);
 
   // Check first run after backend connects
   useEffect(() => {
+    console.log("[App] Backend status changed:", backendStatus);
     if (backendStatus === "connected") {
+      console.log("[App] Backend connected, checking first run...");
       checkFirstRun().then((first) => {
+        console.log("[App] First run check result:", first);
         if (first) setShowWizard(true);
       });
     }
@@ -25,7 +27,7 @@ export default function App() {
   return (
     <>
       <AppShell />
-      {showWizard && isFirstRun && (
+      {showWizard && (
         <FirstRunWizard onComplete={() => setShowWizard(false)} />
       )}
     </>

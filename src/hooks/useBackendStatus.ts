@@ -26,21 +26,34 @@ export function useBackendStatus() {
       }
     });
 
-    // Try to ping the backend after a short delay (let sidecar start)
+    // Ping with retries — sidecar may still be initializing
     setStatus("connecting");
-    const timer = setTimeout(async () => {
+    let cancelled = false;
+
+    const tryPing = async (attempt: number) => {
+      if (cancelled) return;
+      const delay = attempt === 0 ? 500 : 1500;
+      await new Promise((r) => setTimeout(r, delay));
+      if (cancelled) return;
+
       try {
         const result = await pingBackend();
-        console.log("[useBackendStatus] Ping result:", result);
+        console.log("[useBackendStatus] Ping result (attempt %d):", attempt, result);
         setVersion(result.version);
       } catch (err) {
-        console.warn("[useBackendStatus] Ping failed:", err);
-        setError(String(err));
+        console.warn("[useBackendStatus] Ping failed (attempt %d):", attempt, err);
+        if (attempt < 3 && !cancelled) {
+          tryPing(attempt + 1);
+        } else {
+          setError(String(err));
+        }
       }
-    }, 1500);
+    };
+
+    tryPing(0);
 
     return () => {
-      clearTimeout(timer);
+      cancelled = true;
       unlisten.then((fn) => fn());
     };
   }, [setStatus, setVersion, setError]);
