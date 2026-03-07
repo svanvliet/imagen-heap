@@ -226,6 +226,13 @@ function ModelCard({
     ? error.replace(/^RPC error: (LICENSE_REQUIRED|AUTH_REQUIRED): /, "")
     : undefined;
   const isAuthError = error?.includes("AUTH_REQUIRED");
+  const isLicenseError = error?.includes("LICENSE_REQUIRED");
+
+  // Extract URL from error message for clickable links
+  const errorUrl = errorDisplay?.match(/https?:\/\/[^\s,)]+/)?.[0];
+  const errorText = errorDisplay
+    ? errorDisplay.replace(/https?:\/\/[^\s,)]+/, "").replace(/Visit\s+and\s+/, "Visit ").trim()
+    : undefined;
 
   return (
     <div className="bg-bg-primary rounded-lg p-4 border border-border-subtle">
@@ -260,14 +267,49 @@ function ModelCard({
             <span>Min {formatBytes(model.min_memory_mb * 1024 * 1024)} RAM</span>
           </div>
           {/* Error display */}
-          {error && !isAuthError && (
-            <p className="text-[10px] text-red-400 mt-1.5 flex items-center gap-1">
-              <AlertCircle size={10} /> {errorDisplay}
+          {error && !isAuthError && !isLicenseError && (
+            <p className="text-[10px] text-red-400 mt-1.5 flex items-start gap-1">
+              <AlertCircle size={10} className="mt-0.5 flex-shrink-0" />
+              <span>
+                {errorText}
+                {errorUrl && (
+                  <>
+                    {" "}
+                    <a href={errorUrl} target="_blank" rel="noopener" className="underline hover:text-red-300 inline-flex items-center gap-0.5">
+                      Open link <ExternalLink size={8} />
+                    </a>
+                  </>
+                )}
+              </span>
+            </p>
+          )}
+          {isLicenseError && (
+            <p className="text-[10px] text-amber-400 mt-1.5 flex items-start gap-1">
+              <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />
+              <span>
+                License acceptance required.{" "}
+                {errorUrl ? (
+                  <a href={errorUrl} target="_blank" rel="noopener" className="underline hover:text-amber-300 inline-flex items-center gap-0.5">
+                    Accept license on HuggingFace <ExternalLink size={8} />
+                  </a>
+                ) : (
+                  "Visit the model page on HuggingFace to accept."
+                )}
+                {" "}Then retry.
+              </span>
             </p>
           )}
           {isAuthError && (
-            <p className="text-[10px] text-amber-400 mt-1.5 flex items-center gap-1">
-              <KeyRound size={10} /> Requires HuggingFace authentication — enter your token above
+            <p className="text-[10px] text-amber-400 mt-1.5 flex items-start gap-1">
+              <KeyRound size={10} className="mt-0.5 flex-shrink-0" />
+              <span>
+                Requires HuggingFace authentication — enter your token above.{" "}
+                {errorUrl && (
+                  <a href={errorUrl} target="_blank" rel="noopener" className="underline hover:text-amber-300 inline-flex items-center gap-0.5">
+                    View model <ExternalLink size={8} />
+                  </a>
+                )}
+              </span>
             </p>
           )}
         </div>

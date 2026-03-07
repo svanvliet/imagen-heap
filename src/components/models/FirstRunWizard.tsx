@@ -241,11 +241,25 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
                       )}
 
                       {/* Error message */}
-                      {error && !error.includes("AUTH_REQUIRED") && (
-                        <p className="text-[10px] text-red-400 mt-1 line-clamp-2">
-                          {error.replace(/^RPC error: (LICENSE_REQUIRED|AUTH_REQUIRED): /, "")}
-                        </p>
-                      )}
+                      {error && !error.includes("AUTH_REQUIRED") && (() => {
+                        const msg = error.replace(/^RPC error: (LICENSE_REQUIRED|AUTH_REQUIRED): /, "");
+                        const url = msg.match(/https?:\/\/[^\s,)]+/)?.[0];
+                        const text = msg.replace(/https?:\/\/[^\s,)]+/, "").replace(/Visit\s+and\s+/, "Visit ").trim();
+                        const isLicense = error.includes("LICENSE_REQUIRED");
+                        return (
+                          <p className={cn("text-[10px] mt-1", isLicense ? "text-amber-400" : "text-red-400")}>
+                            {isLicense ? "License required. " : ""}{text}
+                            {url && (
+                              <>
+                                {" "}
+                                <a href={url} target="_blank" rel="noopener" className="underline hover:opacity-80">
+                                  {isLicense ? "Accept license ↗" : "Open link ↗"}
+                                </a>
+                              </>
+                            )}
+                          </p>
+                        );
+                      })()}
                     </div>
                   );
                 })}
