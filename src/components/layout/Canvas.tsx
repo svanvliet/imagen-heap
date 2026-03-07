@@ -1,6 +1,6 @@
 import { useGenerationStore } from "@/stores/generation";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette } from "lucide-react";
+import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette, Trash2 } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { STYLE_PRESETS } from "@/lib/constants";
@@ -25,10 +25,12 @@ export function Canvas() {
   const generationError = useGenerationStore((s) => s.generationError);
   const setGenerating = useGenerationStore((s) => s.setGenerating);
   const setProgress = useGenerationStore((s) => s.setProgress);
+  const deleteHistoryItem = useGenerationStore((s) => s.deleteHistoryItem);
 
   const [copied, setCopied] = useState(false);
   const [showContextMenu, setShowContextMenu] = useState<{ x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Convert local file path to an asset URL Tauri's webview can load
   const imageSrc = currentImage?.imagePath
@@ -86,6 +88,27 @@ export function Canvas() {
     },
     [currentImage]
   );
+
+  const handleDelete = useCallback(() => {
+    if (!currentImage) return;
+    deleteHistoryItem(currentImage.id);
+  }, [currentImage, deleteHistoryItem]);
+
+  // Adjust menu position to stay within viewport
+  useEffect(() => {
+    if (!showContextMenu || !menuRef.current) return;
+    const menu = menuRef.current;
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let { x, y } = showContextMenu;
+    if (rect.bottom > vh) y = showContextMenu.y - rect.height;
+    if (rect.right > vw) x = vw - rect.width - 8;
+    if (x !== showContextMenu.x || y !== showContextMenu.y) {
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
+  }, [showContextMenu]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -204,6 +227,13 @@ export function Canvas() {
               >
                 <Copy size={14} />
               </button>
+              <button
+                onClick={handleDelete}
+                className="p-1.5 rounded-md bg-bg-primary/80 backdrop-blur-sm border border-border-default text-text-secondary hover:text-red-400 hover:bg-bg-primary transition-colors"
+                title="Delete"
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           </div>
           {/* Metadata below image */}
@@ -278,6 +308,7 @@ export function Canvas() {
       {/* Right-click context menu */}
       {showContextMenu && currentImage && (
         <div
+          ref={menuRef}
           data-context-menu
           className="fixed z-[100] bg-bg-secondary border border-border-default rounded-lg shadow-xl py-1 min-w-[160px] animate-fade-in"
           style={{ left: showContextMenu.x, top: showContextMenu.y }}
@@ -287,17 +318,24 @@ export function Canvas() {
           <div className="h-px bg-border-default my-1" />
           <ContextMenuItem label="Copy Prompt" onClick={() => { handleCopyPrompt(); setShowContextMenu(null); }} />
           <ContextMenuItem label="Copy Seed" onClick={() => { handleCopySeed(); setShowContextMenu(null); }} />
+          <div className="h-px bg-border-default my-1" />
+          <ContextMenuItem label="Delete" danger onClick={() => { handleDelete(); setShowContextMenu(null); }} />
         </div>
       )}
     </div>
   );
 }
 
-function ContextMenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+function ContextMenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+      className={cn(
+        "w-full text-left px-3 py-1.5 text-xs transition-colors",
+        danger
+          ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+      )}
     >
       {label}
     </button>

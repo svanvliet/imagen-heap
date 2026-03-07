@@ -1,5 +1,5 @@
 import { useGenerationStore } from "@/stores/generation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { GenerationResult } from "@/types";
@@ -8,12 +8,30 @@ export function Filmstrip() {
   const history = useGenerationStore((s) => s.history);
   const currentImage = useGenerationStore((s) => s.currentImage);
   const selectHistoryItem = useGenerationStore((s) => s.selectHistoryItem);
+  const deleteHistoryItem = useGenerationStore((s) => s.deleteHistoryItem);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     item: GenerationResult;
   } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Adjust menu position to stay within viewport
+  useEffect(() => {
+    if (!contextMenu || !menuRef.current) return;
+    const menu = menuRef.current;
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let { x, y } = contextMenu;
+    if (rect.bottom > vh) y = contextMenu.y - rect.height;
+    if (rect.right > vw) x = vw - rect.width - 8;
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
+  }, [contextMenu]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -84,6 +102,7 @@ export function Filmstrip() {
       {/* Filmstrip context menu */}
       {contextMenu && (
         <div
+          ref={menuRef}
           data-context-menu
           className="fixed z-[100] bg-bg-secondary border border-border-default rounded-lg shadow-xl py-1 min-w-[160px] animate-fade-in"
           style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -112,6 +131,13 @@ export function Filmstrip() {
             className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
             Copy Seed
+          </button>
+          <div className="h-px bg-border-default my-1" />
+          <button
+            onClick={() => { deleteHistoryItem(contextMenu.item.id); setContextMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+          >
+            Delete
           </button>
         </div>
       )}

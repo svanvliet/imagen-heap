@@ -35,6 +35,7 @@ interface GenerationState {
   setGenerationError: (error: string | null) => void;
   setCurrentImage: (result: GenerationResult) => void;
   selectHistoryItem: (index: number) => void;
+  deleteHistoryItem: (id: string) => void;
   clearHistory: () => void;
 
   /** Get the full generation config for the current state, with style applied */
@@ -111,6 +112,14 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
     set((s) => ({
       currentImage: s.history[index] ?? null,
     })),
+  deleteHistoryItem: (id) =>
+    set((s) => {
+      const history = s.history.filter((item) => item.id !== id);
+      const currentImage = s.currentImage?.id === id
+        ? (history[0] ?? null)
+        : s.currentImage;
+      return { history, currentImage };
+    }),
   clearHistory: () => set({ history: [], currentImage: null }),
 
   getConfig: () => {
