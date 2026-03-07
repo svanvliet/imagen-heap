@@ -81,6 +81,15 @@
   - No longer auto-advances wizard on download failure
   - Tests: 34 Python + 16 frontend — all passing
   - Rust build: successful
+- **07:42** — Background downloads + status bar:
+  - Async Rust commands: download_model (1hr timeout) and generate_image (10min) use tokio::spawn_blocking
+  - Refactored send_rpc into send_rpc_raw for background thread compatibility
+  - Global download state: errors, progress, status all in Zustand store (persists across wizard/catalog navigation)
+  - StatusBar: spinning download indicator with progress percentage and bytes
+  - Added non-gated pre-quantized FLUX model (dhairyashil/FLUX.1-schnell-mflux-8bit, ~13GB, Apache 2.0)
+  - Differentiated 401 auth-required vs 403 license-required errors
+  - Tests: 34 Python + 16 frontend — all passing
+  - Rust build: successful
 
 ### Commits
 | Hash | Milestone | Description |
@@ -96,3 +105,7 @@
 | `1c79df3` | M2b | docs: add M2b (real inference) to plan, migrate data paths |
 | `5e452ab` | M2b | feat(m2b): real inference — MLXProvider, HuggingFace downloads, download progress UI |
 | `86570b2` | M2b | fix: HF auth handling, wizard UX overhaul, per-model downloads |
+| `d379835` | M2b | fix: re-throw download errors from store so UI can display them |
+| `9ee2e18` | M2b | fix: differentiate 403 license-required from 401 auth-required |
+| `a47b8b5` | M2b | feat: add non-gated pre-quantized FLUX model as default |
+| `dd96f10` | M2b | feat: background downloads with status bar indicator |
