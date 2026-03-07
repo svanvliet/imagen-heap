@@ -6,13 +6,16 @@ This process communicates with the Tauri frontend via JSON-RPC 2.0 over stdio.
 - stderr: reserved for logging
 """
 
+import json
 import logging
+import os
 import platform
 import sys
 
 from imagen_heap import __version__
 from imagen_heap.rpc.server import RpcServer
 from imagen_heap.providers import StubProvider
+from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig
 
 # Configure logging to stderr (stdout is reserved for RPC)
 logging.basicConfig(
@@ -24,10 +27,24 @@ logging.basicConfig(
 logger = logging.getLogger("imagen_heap")
 
 
+def _send_notification(method: str, params: dict) -> None:
+    """Send a JSON-RPC notification (no id) to stdout."""
+    msg = json.dumps({"jsonrpc": "2.0", "method": method, "params": params})
+    sys.stdout.write(msg + "\n")
+    sys.stdout.flush()
+
+
 def create_server() -> RpcServer:
     """Create and configure the RPC server with all handlers."""
     server = RpcServer()
     provider = StubProvider()
+
+    # Determine output directory
+    output_dir = os.environ.get(
+        "IMAGEN_HEAP_OUTPUT_DIR",
+        os.path.expanduser("~/Documents/ImagenHeap/generations"),
+    )
+    orchestrator = PipelineOrchestrator(output_dir=output_dir, provider=provider)
 
     # --- Core methods ---
 
@@ -56,9 +73,37 @@ def create_server() -> RpcServer:
             "available_mb": status.available_mb,
         }
 
+    def handle_generate(params: dict) -> dict:
+        """Handle a generation request with progress streaming."""
+        config = GenerationConfig(
+            prompt=params.get("prompt", ""),
+            negative_prompt=params.get("negative_prompt", ""),
+            seed=params.get("seed", 42),
+            steps=params.get("steps", 4),
+            cfg=params.get("cfg", 7.5),
+            width=params.get("width", 1024),
+            height=params.get("height", 1024),
+            quality_profile=params.get("quality_profile", "fast"),
+            model_id=params.get("model_id", "flux-schnell"),
+            sampler=params.get("sampler", "euler"),
+            scheduler=params.get("scheduler", "normal"),
+        )
+
+        def on_progress(job_id: str, step: int, total: int, preview: str | None) -> None:
+            _send_notification("progress", {
+                "job_id": job_id,
+                "step": step,
+                "total_steps": total,
+                "preview_base64": preview,
+            })
+
+        result = orchestrator.generate(config, progress_callback=on_progress)
+        return result.to_dict()
+
     server.register("ping", handle_ping)
     server.register("get_device_info", handle_get_device_info)
     server.register("get_memory_status", handle_get_memory_status)
+    server.register("generate", handle_generate)
 
     return server
 

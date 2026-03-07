@@ -1,11 +1,17 @@
 import { useGenerationStore } from "@/stores/generation";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 export function Canvas() {
   const currentImage = useGenerationStore((s) => s.currentImage);
   const isGenerating = useGenerationStore((s) => s.isGenerating);
   const progress = useGenerationStore((s) => s.progress);
+
+  // Convert local file path to an asset URL Tauri's webview can load
+  const imageSrc = currentImage?.imagePath
+    ? convertFileSrc(currentImage.imagePath)
+    : null;
 
   return (
     <div className="flex-1 flex items-center justify-center bg-bg-primary p-6 min-h-0">
@@ -29,14 +35,21 @@ export function Canvas() {
             </div>
           </div>
         </div>
-      ) : currentImage ? (
+      ) : currentImage && imageSrc ? (
         /* Display generated image */
         <div className="animate-fade-in max-h-full max-w-full">
           <img
-            src={`asset://localhost/${currentImage.imagePath}`}
+            src={imageSrc}
             alt="Generated image"
             className="max-h-full max-w-full object-contain rounded-lg shadow-lg"
           />
+          <div className="mt-3 flex items-center justify-center gap-3 text-xs text-text-muted">
+            <span>Seed: {currentImage.config.seed}</span>
+            <span>•</span>
+            <span>{currentImage.generationTimeMs}ms</span>
+            <span>•</span>
+            <span>{currentImage.config.width}×{currentImage.config.height}</span>
+          </div>
         </div>
       ) : (
         /* Empty state */

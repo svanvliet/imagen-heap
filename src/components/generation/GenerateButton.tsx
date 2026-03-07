@@ -1,4 +1,5 @@
 import { useGenerationStore } from "@/stores/generation";
+import { useGeneration } from "@/hooks/useGeneration";
 import { Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -6,14 +7,14 @@ export function GenerateButton() {
   const isGenerating = useGenerationStore((s) => s.isGenerating);
   const prompt = useGenerationStore((s) => s.prompt);
   const progress = useGenerationStore((s) => s.progress);
+  const { generate, canGenerate } = useGeneration();
 
   const handleGenerate = () => {
-    if (isGenerating || !prompt.trim()) return;
-    // Generation will be wired to backend in M2
-    console.log("[GenerateButton] Generate clicked", useGenerationStore.getState().getConfig());
+    if (isGenerating || !prompt.trim() || !canGenerate) return;
+    generate();
   };
 
-  const disabled = !prompt.trim() || isGenerating;
+  const disabled = !prompt.trim() || isGenerating || !canGenerate;
 
   return (
     <button

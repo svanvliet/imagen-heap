@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M1 — Project Scaffold & Core Shell ✅
+## Current Phase: M2 — Basic Image Generation ✅
 
 ### Progress Log
 
@@ -22,3 +22,15 @@
   - Rust backend: sidecar manager, JSON-RPC client, ping_backend/get_backend_status commands
   - Tests: 16 frontend (vitest), 14 Python (pytest) — all passing
   - Tauri build: successful (.app + .dmg produced)
+- **06:25** — M2 generation pipeline complete:
+  - Pipeline orchestrator with GenerationConfig/GenerationResult
+  - StubProvider generates placeholder SVGs with generation metadata
+  - Progress streaming via JSON-RPC notifications → Tauri events → React
+  - Rust IPC refactored: background reader thread for async stdout, pending response map
+  - generate_image Tauri command wired end-to-end
+  - useGeneration hook: generates, receives progress, updates store + canvas
+  - useBackendStatus hook: ping on startup, listen for status events
+  - Canvas shows generation info (seed, time, dimensions)
+  - Filmstrip uses convertFileSrc for local file display
+  - Tests: 16 frontend + 19 Python — all passing
+  - Tauri build: successful

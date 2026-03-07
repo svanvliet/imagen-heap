@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "shell:default"
+    "shell:default",
+    {
+      "identifier": "core:default",
+      "allow": [{ "path": "$HOME/**" }]
+    }
   ]
 }

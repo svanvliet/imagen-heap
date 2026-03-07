@@ -103,7 +103,7 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Toolbar: [Mode Toggle] [Project] [Generate]    [Settings ⚙]│
+│  Toolbar: [Mode Toggle] [Project] [Generate]    [Settings ⚙] │
 ├────────────┬─────────────────────────────────┬───────────────┤
 │            │                                 │               │
 │  Left      │        Canvas / Preview         │  Right        │
@@ -111,8 +111,8 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 │            │   ┌─────────────────────────┐   │               │
 │  - Prompt  │   │                         │   │  - Character  │
 │  - Style   │   │    Generated Image      │   │  - Pose       │
-│  - Quality │   │    (or generation        │   │  - ControlNet │
-│  - Aspect  │   │     progress)            │   │  - Advanced   │
+│  - Quality │   │    (or generation       │   │  - ControlNet │
+│  - Aspect  │   │     progress)           │   │  - Advanced   │
 │            │   │                         │   │    controls   │
 │            │   └─────────────────────────┘   │               │
 │            │                                 │               │
@@ -120,7 +120,7 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 │            │  │  Filmstrip / History        ││               │
 │            │  └─────────────────────────────┘│               │
 ├────────────┴─────────────────────────────────┴───────────────┤
-│  Status Bar: [Local ◉] [Model: FLUX.1-schnell] [Memory: 8GB]│
+│  Status Bar: [Local ◉] [Model: FLUX.1-schnell] [Memory: 8GB] │
 └──────────────────────────────────────────────────────────────┘
 ```
 

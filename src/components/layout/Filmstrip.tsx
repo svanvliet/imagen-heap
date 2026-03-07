@@ -1,5 +1,6 @@
 import { useGenerationStore } from "@/stores/generation";
 import { cn } from "@/lib/utils";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 export function Filmstrip() {
   const history = useGenerationStore((s) => s.history);
@@ -23,7 +24,7 @@ export function Filmstrip() {
             )}
           >
             <img
-              src={`asset://localhost/${item.thumbnailPath}`}
+              src={convertFileSrc(item.thumbnailPath)}
               alt={`Generation ${index + 1}`}
               className="w-full h-full object-cover"
             />
