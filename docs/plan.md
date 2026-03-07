@@ -153,7 +153,7 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 
 The MVP is broken into 10 milestones. Each milestone produces a working, testable increment.
 
-> **Implementation note (M1–M3 + M2b status):** M1 (scaffold), M2 (generation UI/pipeline with StubProvider), and M3 (model management) are complete. M2b (real inference & downloads) is nearly complete — MLXProvider, real HuggingFace downloads with progress/auth/resume, background threaded downloads, and full Model Manager UX are done. Remaining: end-to-end generation test (2b.5). Two real FLUX models are downloaded and verified: flux-schnell-mflux-q8 (17GB) and flux-dev-q8 (54GB).
+> **Implementation note (M1–M4 status):** M1 (scaffold), M2 (generation UI/pipeline), M2b (real inference & downloads), M3 (model management), and M4 (style presets & prompt tools) are all complete. Real FLUX image generation is working end-to-end on Apple Silicon via MLX. Two models downloaded: flux-schnell-mflux-q8 (17GB) and flux-dev-q8 (54GB). App icon, build scripts, settings persistence, and prompt templates all shipped. Next: M5 (Gallery & History).
 
 ---
 
@@ -330,7 +330,7 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ---
 
-### Milestone 2b: Real Inference & Model Downloads 🚧
+### Milestone 2b: Real Inference & Model Downloads ✅
 
 **Goal:** Replace stubs with real FLUX image generation on Apple Silicon via MLX, and real HuggingFace model downloads with progress. After this milestone, the user can generate actual images.
 
@@ -519,55 +519,64 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ---
 
-### Milestone 4: Style Presets & Prompt Tools
+### Milestone 4: Style Presets & Prompt Tools ✅
 
 **Goal:** Style presets modify generation parameters. Prompt history is searchable. The prompt experience feels delightful.
 
+**Status: COMPLETE** — All 4 tasks done.
+
 #### Tasks
 
-**4.1 — Style preset system**
-- Define at least 8 style presets (stored as JSON):
-  - **Photorealistic** — natural, detailed, no artistic stylization
+**4.1 — Style preset system** ✅
+- 8 style presets defined in `src/lib/constants.ts` as `STYLE_PRESETS` array:
+  - **Photo** — natural, detailed, photographic realism
   - **Cinematic** — dramatic lighting, film grain, shallow depth of field
   - **Anime** — anime/manga art style, clean lines, vibrant colors
   - **Watercolor** — soft, painterly, watercolor texture
   - **Digital Art** — polished digital illustration
-  - **Concept Art** — concept art style, environment/character design
-  - **Pixel Art** — retro pixel art style
+  - **Concept** — concept art style, environment/character design
+  - **Pixel** — retro pixel art style
   - **Line Art** — clean black and white line drawing
-- Each preset includes: display name, thumbnail, prompt suffix, negative prompt, recommended model, sampler, CFG, style description
-- Presets stored in user-accessible JSON directory (user-extensible per UX-006)
+- Each preset includes: id, name, description, emoji icon, gradient colors, prompt suffix, negative prompt, recommended CFG
+- Presets applied atomically via `getConfig()` in generation store (prompt suffix + negative prompt merge)
 
-**4.2 — Style preset UI**
-- **Visual style grid** in left sidebar (below prompt):
-  - 2-column grid of style cards with thumbnail previews
-  - Each card: thumbnail image + style name
-  - Selected state: accent border + checkmark
-  - "None" option for no style modification
-- Selecting a preset: smooth transition, updates internal params
-- If user modifies any preset-linked param: style label changes to "Custom (based on Cinematic)"
-- Hover: shows brief description tooltip
+**4.2 — Style preset UI** ✅
+- **4-column visual grid** in left sidebar (between Quality and Aspect Ratio):
+  - Gradient cards with emoji icons and style names
+  - Selected state: accent border + checkmark badge
+  - "None" option (🚫) for no style modification
+  - Hover: gradient background reveals, tooltip with description
+- Selecting a preset updates CFG to recommended value
+- Style badge shown in canvas metadata for generated images
 
-**4.3 — Prompt history**
-- Auto-save every prompt to `prompt_history` table
+**4.3 — Prompt history** ✅
+- Auto-saves every prompt to localStorage after successful generation (Zustand persist middleware)
 - **History dropdown** on prompt textarea:
-  - Triggered by clicking a small clock icon in the textarea
-  - Searchable list of past prompts
-  - Shows timestamp and style used
-  - Click to load prompt
-  - Delete individual entries
-- Persists across sessions
+  - Triggered by clicking clock icon (🕐) in the prompt label
+  - Searchable list with filter input
+  - Shows relative timestamps ("2m ago", "yesterday") and style preset used
+  - Click to load prompt, trash icon to delete individual entries
+  - Deduplicates — latest usage bubbles to top, max 100 entries
+- Persists across sessions via localStorage
 
-**4.4 — Prompt UX polish**
-- Auto-resize textarea as user types (up to a max height, then scroll)
-- Subtle syntax highlighting for prompt weight syntax `(keyword:1.3)` in Advanced Mode
-- "Clear" button (×) in textarea corner
-- Prompt templates button (📝) opens a categorized template browser:
-  - Categories: Portrait, Landscape, Concept Art, Product Shot, Character Design, etc.
-  - At least 30 templates per FR-060
-  - Click to insert into prompt field
+**4.4 — Prompt UX polish** ✅
+- Auto-resize textarea as user types (up to 200px max height)
+- "Clear" button (×) in prompt label when text present
+- Prompt templates button (📄) opens a categorized template browser:
+  - 7 categories: Portrait, Landscape, Concept Art, Product, Character Design, Abstract, Architecture
+  - 32 templates total (exceeds FR-060 requirement of 30)
+  - Searchable overlay panel with category sidebar navigation
+  - Click to insert into prompt field, Escape to close
+- ~~Syntax highlighting for `(keyword:1.3)`~~ *(deferred — FLUX doesn't use weight syntax)*
 
-**Deliverable:** Users pick styles from a visual grid. Styles modify generation parameters atomically. Prompt history is searchable. Template library provides starting points.
+**Deliverable:** ✅ Users pick styles from a visual grid. Styles modify generation parameters atomically. Prompt history is searchable. Template library provides starting points.
+
+#### Additional polish (post-M4)
+
+- **Context menus**: Boundary-aware positioning (flip upward near window bottom), "Delete" option with danger styling on canvas + filmstrip
+- **App icon**: Custom sparkle glyph (exact lucide Sparkles) on zinc-900 squircle with indigo inner border, all sizes (.icns, .ico, PNGs), favicon, dev mode icon via `set_icon()`
+- **Build scripts**: `run.sh` (dev mode), `build.sh` (dist .app + .dmg)
+- **Settings persistence**: All generation settings, model selection, prompt history, and generation history persist across app restarts via zustand persist + localStorage
 
 ---
 
@@ -1224,7 +1233,7 @@ Before committing to full implementation, these items should be validated with q
 ## Milestone Dependencies
 
 ```
-M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) 🚧 → M4 (Styles)
+M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) ✅ → M4 (Styles) ✅
                          │                                        │
                          ├→ M3 (Models) ✅ ───────────────────────┤
                          │                                        │

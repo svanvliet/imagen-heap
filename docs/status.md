@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M4 — Style Presets & Prompt Tools ✅
+## Current Phase: M4 — Style Presets & Prompt Tools ✅ | Polish pass complete
 
 **Next up:** M5 (Gallery & History)
 
@@ -166,6 +166,27 @@
   - Click any template to load into prompt field
   - FileText icon on prompt label to open, Escape/click-outside to close
   - Clear button (×) on prompt label when text present
+- **10:20** — Context menu fixes + delete from history:
+  - Context menus now flip upward when near the bottom edge of the window (boundary-aware positioning)
+  - Added "Delete" option to filmstrip and canvas context menus (red styled)
+  - Added trash button to canvas hover toolbar
+  - Deleting the current image auto-selects the next one in history
+  - Added `deleteHistoryItem` to generation store
+- **10:50** — Custom app icon + build/run scripts:
+  - Icon: exact lucide Sparkles glyph (4-point star, cross, circle) on zinc-900 squircle with indigo inner border
+  - Generated all Tauri icon sizes: .icns, .ico, PNGs (32–1024), Windows Store logos
+  - `run.sh`: launches `npx tauri dev`
+  - `build.sh`: produces .app + .dmg (4.3MB)
+  - Updated .gitignore: added `src-tauri/target/`
+  - Updated index.html: favicon.png + "Imagen Heap" title (removed Vite/Tauri defaults)
+- **10:56** — Persistent settings across restarts:
+  - Generation store now persists: prompt, negativePrompt, qualityProfile, stylePresetId, aspectRatio, seed, seedLocked, steps, cfg, history, currentImage (zustand persist + localStorage)
+  - Model store persists: selectedModelId
+  - Prompt history already persisted
+  - Transient state (isGenerating, progress, errors) resets on reload
+- **11:02** — Icon refinements + dev mode icon:
+  - Icon border doubled to 50px (2× thicker) for more visible inner stroke
+  - Added `image-png` Tauri feature + `window.set_icon()` in debug builds so custom icon shows during `./run.sh`
 
 ### What's Done (M4 status)
 
@@ -175,6 +196,15 @@
 | 4.2 Style preset UI | ✅ Done | 4-col grid in sidebar, gradient cards, selected checkmark, "None" option |
 | 4.3 Prompt history | ✅ Done | localStorage persistence, searchable, timestamps, style badges, dedup |
 | 4.4 Prompt UX polish | ✅ Done | Auto-resize ✅, clear button ✅, template browser (32 templates, 7 categories) |
+
+### What's Done (Polish)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Context menus | ✅ Done | Boundary-aware (flip upward), delete from history, danger styling |
+| App icon | ✅ Done | Custom sparkle icon, all sizes, dev + build mode, favicon |
+| Build scripts | ✅ Done | run.sh (dev), build.sh (dist .app + .dmg) |
+| Settings persistence | ✅ Done | All generation/model settings persist via zustand + localStorage |
 
 ### What's Done (M2b status)
 
@@ -229,6 +259,11 @@
 | `c218bb0` | M4 | feat: M4.1+4.2 — style presets with visual grid (8 styles) |
 | `f7d57c1` | M4 | feat: M4.3 — prompt history with search and persistence |
 | `587b46f` | M4 | feat: M4.4 — prompt templates browser (32 templates, 7 categories) |
+| `3ccdcec` | — | fix: boundary-aware context menus + delete from history |
+| `2bcee90` | — | feat: custom app icon, run/build scripts, gitignore update |
+| `9291277` | — | fix: correct sparkle icon, favicon, persistent generation history |
+| `8b90cd2` | — | fix: persist all user settings and model selection across restarts |
+| `48d0e43` | — | fix: thicker icon border (2x), set window icon in dev mode |
 
 ### Test Counts
 - Python: 35 tests passing
