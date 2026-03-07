@@ -1,8 +1,9 @@
 import { useBackendStore } from "@/stores/backend";
 import { useModelStore } from "@/stores/models";
+import { useGenerationStore } from "@/stores/generation";
 import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
-import { Circle, Cpu, HardDrive, Loader2 } from "lucide-react";
+import { Circle, Cpu, HardDrive, Loader2, Sparkles } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 
 export function StatusBar() {
@@ -11,6 +12,9 @@ export function StatusBar() {
   const memoryUsageMb = useBackendStore((s) => s.memoryUsageMb);
   const downloadingModels = useModelStore((s) => s.downloadingModels);
   const downloadProgress = useModelStore((s) => s.downloadProgress);
+  const selectedModelId = useModelStore((s) => s.selectedModelId);
+  const isGenerating = useGenerationStore((s) => s.isGenerating);
+  const genProgress = useGenerationStore((s) => s.progress);
   const setShowModelManager = useUIStore((s) => s.setShowModelManager);
 
   const statusColor = {
@@ -62,11 +66,31 @@ export function StatusBar() {
         </button>
       )}
 
-      {/* Loaded model */}
-      {loadedModel && (
+      {/* Generation progress indicator */}
+      {isGenerating && (
+        <div className="flex items-center gap-1.5 text-accent">
+          <Sparkles size={11} className="animate-pulse" />
+          <span className="text-[11px]">
+            {genProgress
+              ? `Generating: Step ${genProgress.step}/${genProgress.totalSteps}`
+              : "Generating…"}
+          </span>
+          {genProgress && (
+            <div className="w-16 h-1 bg-bg-tertiary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent rounded-full transition-all duration-300"
+                style={{ width: `${(genProgress.step / genProgress.totalSteps) * 100}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Active / loaded model */}
+      {(loadedModel || selectedModelId) && (
         <div className="flex items-center gap-1.5 text-text-muted">
           <Cpu size={11} />
-          <span>{loadedModel}</span>
+          <span>{loadedModel || selectedModelId}</span>
         </div>
       )}
 

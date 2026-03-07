@@ -6,11 +6,15 @@ import { randomSeed } from "@/lib/utils";
 interface GenerationState {
   prompt: string;
   negativePrompt: string;
-  qualityProfile: "fast" | "quality";
+  qualityProfile: "fast" | "quality" | "custom";
   aspectRatio: (typeof ASPECT_RATIOS)[number];
   seed: number;
+  seedLocked: boolean;
+  steps: number;
+  cfg: number;
   isGenerating: boolean;
   progress: GenerationProgress | null;
+  generationStartTime: number | null;
   currentImage: GenerationResult | null;
   history: GenerationResult[];
 
@@ -19,6 +23,9 @@ interface GenerationState {
   setQualityProfile: (profile: "fast" | "quality") => void;
   setAspectRatio: (ratioId: string) => void;
   setSeed: (seed: number) => void;
+  setSeedLocked: (locked: boolean) => void;
+  setSteps: (steps: number) => void;
+  setCfg: (cfg: number) => void;
   randomizeSeed: () => void;
   setGenerating: (isGenerating: boolean) => void;
   setProgress: (progress: GenerationProgress | null) => void;
@@ -31,11 +38,12 @@ interface GenerationState {
     prompt: string;
     negativePrompt: string;
     seed: number;
-    qualityProfile: "fast" | "quality";
+    qualityProfile: string;
     aspectRatio: string;
     width: number;
     height: number;
     steps: number;
+    cfg: number;
   };
 }
 
@@ -45,21 +53,32 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
   qualityProfile: "fast",
   aspectRatio: ASPECT_RATIOS[0],
   seed: randomSeed(),
+  seedLocked: false,
+  steps: QUALITY_PROFILES.fast.steps,
+  cfg: 3.5,
   isGenerating: false,
   progress: null,
+  generationStartTime: null,
   currentImage: null,
   history: [],
 
   setPrompt: (prompt) => set({ prompt }),
   setNegativePrompt: (negativePrompt) => set({ negativePrompt }),
-  setQualityProfile: (profile) => set({ qualityProfile: profile }),
+  setQualityProfile: (profile) => {
+    const p = QUALITY_PROFILES[profile];
+    set({ qualityProfile: profile, steps: p.steps, cfg: 3.5 });
+  },
   setAspectRatio: (ratioId) => {
     const ratio = ASPECT_RATIOS.find((r) => r.id === ratioId);
     if (ratio) set({ aspectRatio: ratio });
   },
   setSeed: (seed) => set({ seed }),
+  setSeedLocked: (locked) => set({ seedLocked: locked }),
+  setSteps: (steps) => set({ steps, qualityProfile: "custom" }),
+  setCfg: (cfg) => set({ cfg, qualityProfile: "custom" }),
   randomizeSeed: () => set({ seed: randomSeed() }),
-  setGenerating: (isGenerating) => set({ isGenerating }),
+  setGenerating: (isGenerating) =>
+    set({ isGenerating, generationStartTime: isGenerating ? Date.now() : null }),
   setProgress: (progress) => set({ progress }),
   setCurrentImage: (result) =>
     set((s) => ({
@@ -76,7 +95,6 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
 
   getConfig: () => {
     const s = get();
-    const profile = QUALITY_PROFILES[s.qualityProfile];
     return {
       prompt: s.prompt,
       negativePrompt: s.negativePrompt,
@@ -85,7 +103,8 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
       aspectRatio: s.aspectRatio.id,
       width: s.aspectRatio.width,
       height: s.aspectRatio.height,
-      steps: profile.steps,
+      steps: s.steps,
+      cfg: s.cfg,
     };
   },
 }));

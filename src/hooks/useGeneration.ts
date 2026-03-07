@@ -1,10 +1,10 @@
 import { useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useGenerationStore } from "@/stores/generation";
+import { useModelStore } from "@/stores/models";
 import { useBackendStore } from "@/stores/backend";
 import { generateImage } from "@/lib/tauri";
 import { randomSeed } from "@/lib/utils";
-import { QUALITY_PROFILES } from "@/lib/constants";
 
 interface ProgressPayload {
   job_id: string;
@@ -21,6 +21,7 @@ export function useGeneration() {
   const setProgress = useGenerationStore((s) => s.setProgress);
   const setCurrentImage = useGenerationStore((s) => s.setCurrentImage);
   const backendStatus = useBackendStore((s) => s.status);
+  const selectedModelId = useModelStore((s) => s.selectedModelId);
 
   // Listen for progress events
   useEffect(() => {
@@ -41,26 +42,26 @@ export function useGeneration() {
 
   const generate = useCallback(async () => {
     const state = useGenerationStore.getState();
-    if (!state.prompt.trim() || state.isGenerating) return;
+    const modelId = useModelStore.getState().selectedModelId;
+    if (!state.prompt.trim() || state.isGenerating || !modelId) return;
 
-    const profile = QUALITY_PROFILES[state.qualityProfile];
-    const seed = randomSeed();
+    const seed = state.seedLocked ? state.seed : randomSeed();
     useGenerationStore.getState().setSeed(seed);
     setGenerating(true);
     setProgress(null);
 
     try {
-      console.log("[useGeneration] Starting generation...");
+      console.log("[useGeneration] Starting generation with model:", modelId);
       const result = await generateImage({
         prompt: state.prompt,
         negative_prompt: state.negativePrompt,
         seed,
-        steps: profile.steps,
-        cfg: 7.5,
+        steps: state.steps,
+        cfg: state.cfg,
         width: state.aspectRatio.width,
         height: state.aspectRatio.height,
-        quality_profile: state.qualityProfile,
-        model_id: profile.model,
+        quality_profile: state.qualityProfile === "custom" ? "fast" : state.qualityProfile,
+        model_id: modelId,
         sampler: "euler",
         scheduler: "normal",
       });
@@ -75,15 +76,15 @@ export function useGeneration() {
           prompt: state.prompt,
           negativePrompt: state.negativePrompt,
           seed,
-          qualityProfile: state.qualityProfile,
+          qualityProfile: state.qualityProfile === "custom" ? "fast" : state.qualityProfile,
           aspectRatio: state.aspectRatio.id,
           width: state.aspectRatio.width,
           height: state.aspectRatio.height,
-          steps: profile.steps,
-          cfg: 7.5,
+          steps: state.steps,
+          cfg: state.cfg,
           sampler: "euler",
           scheduler: "normal",
-          modelId: profile.model,
+          modelId,
           inferenceLocation: "local",
         },
         generationTimeMs: result.generation_time_ms,
@@ -98,6 +99,6 @@ export function useGeneration() {
 
   return {
     generate,
-    canGenerate: backendStatus === "connected",
+    canGenerate: backendStatus === "connected" && !!selectedModelId,
   };
 }

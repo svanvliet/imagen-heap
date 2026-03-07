@@ -29,6 +29,7 @@ export interface DownloadProgress {
 
 interface ModelState {
   models: ModelInfo[];
+  selectedModelId: string | null;
   isFirstRun: boolean | null;
   isLoading: boolean;
   downloadingModels: Set<string>;
@@ -44,10 +45,14 @@ interface ModelState {
   setDownloadProgress: (progress: DownloadProgress) => void;
   clearDownloadError: (modelId: string) => void;
   clearAllDownloadErrors: () => void;
+  setSelectedModel: (modelId: string) => void;
+  autoSelectModel: (qualityHint?: "fast" | "quality") => void;
+  getDownloadedModels: () => ModelInfo[];
 }
 
 export const useModelStore = create<ModelState>((set, get) => ({
   models: [],
+  selectedModelId: null,
   isFirstRun: null,
   isLoading: false,
   downloadingModels: new Set(),
@@ -55,12 +60,44 @@ export const useModelStore = create<ModelState>((set, get) => ({
   downloadErrors: new Map(),
   diskUsage: null,
 
+  getDownloadedModels: () => get().models.filter((m) => m.status === "downloaded"),
+
+  setSelectedModel: (modelId: string) => {
+    log.info("Selected model:", modelId);
+    set({ selectedModelId: modelId });
+  },
+
+  autoSelectModel: (qualityHint?: "fast" | "quality") => {
+    const downloaded = get().models.filter((m) => m.status === "downloaded");
+    if (downloaded.length === 0) return;
+
+    // If quality hint given, try to match schnell for fast, dev for quality
+    if (qualityHint) {
+      const pattern = qualityHint === "fast" ? "schnell" : "dev";
+      const match = downloaded.find((m) => m.id.includes(pattern));
+      if (match) {
+        set({ selectedModelId: match.id });
+        return;
+      }
+    }
+
+    // If current selection is still valid, keep it
+    const current = get().selectedModelId;
+    if (current && downloaded.some((m) => m.id === current)) return;
+
+    // Default to first downloaded (prefer default model)
+    const defaultModel = downloaded.find((m) => m.is_default) || downloaded[0];
+    set({ selectedModelId: defaultModel.id });
+  },
+
   loadModels: async () => {
     set({ isLoading: true });
     try {
       const models = await getModels();
       log.info("Loaded %d models", (models as ModelInfo[]).length);
       set({ models: models as ModelInfo[], isLoading: false });
+      // Auto-select a model if none is selected
+      get().autoSelectModel();
     } catch (err) {
       log.error("Failed to load models:", err);
       set({ isLoading: false });

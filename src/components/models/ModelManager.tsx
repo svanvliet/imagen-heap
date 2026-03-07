@@ -17,6 +17,7 @@ import {
   AlertCircle,
   FolderOpen,
   RotateCcw,
+  Play,
 } from "lucide-react";
 
 const log = createLogger("ModelManager");
@@ -32,10 +33,12 @@ export function ModelManager({ onClose }: ModelManagerProps) {
   const downloadProgress = useModelStore((s) => s.downloadProgress);
   const downloadErrors = useModelStore((s) => s.downloadErrors);
   const diskUsage = useModelStore((s) => s.diskUsage);
+  const selectedModelId = useModelStore((s) => s.selectedModelId);
   const loadModels = useModelStore((s) => s.loadModels);
   const loadDiskUsage = useModelStore((s) => s.loadDiskUsage);
   const downloadModelAction = useModelStore((s) => s.downloadModel);
   const deleteModelAction = useModelStore((s) => s.deleteModel);
+  const setSelectedModel = useModelStore((s) => s.setSelectedModel);
 
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [hfToken, setHfToken] = useState("");
@@ -179,9 +182,14 @@ export function ModelManager({ onClose }: ModelManagerProps) {
                 isDownloading={downloadingModels.has(model.id)}
                 progress={downloadProgress.get(model.id)}
                 error={downloadErrors.get(model.id)}
+                isActive={model.id === selectedModelId}
                 onDownload={() => handleDownload(model.id)}
                 onDelete={() => handleDelete(model.id)}
                 onRevealFolder={() => revealModelFolder(model.id)}
+                onUseModel={() => {
+                  setSelectedModel(model.id);
+                  onClose();
+                }}
                 confirmingDelete={confirmDelete === model.id}
                 onCancelDelete={() => setConfirmDelete(null)}
                 licenseBadgeClass={licenseBadge(model.license_spdx)}
@@ -199,9 +207,11 @@ function ModelCard({
   isDownloading,
   progress,
   error,
+  isActive,
   onDownload,
   onDelete,
   onRevealFolder,
+  onUseModel,
   confirmingDelete,
   onCancelDelete,
   licenseBadgeClass,
@@ -210,9 +220,11 @@ function ModelCard({
   isDownloading: boolean;
   progress?: DownloadProgress;
   error?: string;
+  isActive: boolean;
   onDownload: () => void;
   onDelete: () => void;
   onRevealFolder: () => void;
+  onUseModel: () => void;
   confirmingDelete: boolean;
   onCancelDelete: () => void;
   licenseBadgeClass: string;
@@ -235,7 +247,10 @@ function ModelCard({
     : undefined;
 
   return (
-    <div className="bg-bg-primary rounded-lg p-4 border border-border-subtle">
+    <div className={cn(
+      "bg-bg-primary rounded-lg p-4 border",
+      isActive ? "border-accent/50" : "border-border-subtle"
+    )}>
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -357,6 +372,18 @@ function ModelCard({
                 </>
               ) : (
                 <>
+                  {isActive ? (
+                    <span className="text-[10px] text-accent font-medium mr-1 flex items-center gap-0.5">
+                      <Play size={10} className="fill-current" /> Active
+                    </span>
+                  ) : (
+                    <button
+                      onClick={onUseModel}
+                      className="px-2 py-1 rounded-md bg-accent/10 hover:bg-accent/20 text-accent text-[10px] font-medium transition-colors mr-1"
+                    >
+                      Use
+                    </button>
+                  )}
                   <span className="text-[10px] text-success font-medium mr-1">
                     <Check size={12} className="inline" /> Installed
                   </span>

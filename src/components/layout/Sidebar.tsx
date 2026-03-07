@@ -1,6 +1,8 @@
 import { PromptInput } from "@/components/generation/PromptInput";
 import { QualityToggle } from "@/components/generation/QualityToggle";
 import { AspectRatioSelector } from "@/components/generation/AspectRatioSelector";
+import { ModelSelector } from "@/components/generation/ModelSelector";
+import { AdvancedParams } from "@/components/generation/AdvancedParams";
 import { GenerateButton } from "@/components/generation/GenerateButton";
 
 export function Sidebar() {
@@ -9,6 +11,14 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {/* Prompt */}
         <PromptInput />
+
+        {/* Model selector */}
+        <div>
+          <label className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2 block">
+            Model
+          </label>
+          <ModelSelector />
+        </div>
 
         {/* Quality profile */}
         <div>
@@ -25,6 +35,9 @@ export function Sidebar() {
           </label>
           <AspectRatioSelector />
         </div>
+
+        {/* Advanced Parameters */}
+        <AdvancedParams />
       </div>
 
       {/* Generate button pinned to bottom */}
