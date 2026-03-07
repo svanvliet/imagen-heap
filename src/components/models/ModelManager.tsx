@@ -28,13 +28,13 @@ export function ModelManager({ onClose }: ModelManagerProps) {
   const isLoading = useModelStore((s) => s.isLoading);
   const downloadingModels = useModelStore((s) => s.downloadingModels);
   const downloadProgress = useModelStore((s) => s.downloadProgress);
+  const downloadErrors = useModelStore((s) => s.downloadErrors);
   const diskUsage = useModelStore((s) => s.diskUsage);
   const loadModels = useModelStore((s) => s.loadModels);
   const loadDiskUsage = useModelStore((s) => s.loadDiskUsage);
   const downloadModelAction = useModelStore((s) => s.downloadModel);
   const deleteModelAction = useModelStore((s) => s.deleteModel);
 
-  const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [hfToken, setHfToken] = useState("");
   const [savingToken, setSavingToken] = useState(false);
@@ -44,23 +44,15 @@ export function ModelManager({ onClose }: ModelManagerProps) {
     loadDiskUsage();
   }, [loadModels, loadDiskUsage]);
 
-  const handleDownload = async (modelId: string) => {
-    setDownloadErrors((prev) => { const next = { ...prev }; delete next[modelId]; return next; });
-    try {
-      await downloadModelAction(modelId);
-      loadDiskUsage();
-    } catch (err) {
+  const handleDownload = (modelId: string) => {
+    useModelStore.getState().clearDownloadError(modelId);
+    downloadModelAction(modelId).catch((err) => {
       const msg = String(err);
       log.error("Download failed:", modelId, msg);
       if (msg.includes("AUTH_REQUIRED")) {
-        setDownloadErrors((prev) => ({ ...prev, [modelId]: "auth_required" }));
         setShowTokenInput(true);
-      } else if (msg.includes("LICENSE_REQUIRED")) {
-        setDownloadErrors((prev) => ({ ...prev, [modelId]: msg.replace("LICENSE_REQUIRED: ", "") }));
-      } else {
-        setDownloadErrors((prev) => ({ ...prev, [modelId]: msg }));
       }
-    }
+    });
   };
 
   const handleSaveToken = async () => {
@@ -70,7 +62,7 @@ export function ModelManager({ onClose }: ModelManagerProps) {
       await saveHfToken(hfToken.trim());
       log.info("HF token saved");
       setShowTokenInput(false);
-      setDownloadErrors({});
+      useModelStore.getState().clearAllDownloadErrors();
     } catch (err) {
       log.error("Failed to save token:", err);
     }
@@ -161,7 +153,7 @@ export function ModelManager({ onClose }: ModelManagerProps) {
                 model={model}
                 isDownloading={downloadingModels.has(model.id)}
                 progress={downloadProgress.get(model.id)}
-                error={downloadErrors[model.id]}
+                error={downloadErrors.get(model.id)}
                 onDownload={() => handleDownload(model.id)}
                 onDelete={() => deleteModelAction(model.id)}
                 licenseBadgeClass={licenseBadge(model.license_spdx)}
@@ -196,6 +188,11 @@ function ModelCard({
     ? Math.round((progress.bytes_downloaded / progress.total_bytes) * 100)
     : null;
 
+  const errorDisplay = error
+    ? error.replace(/^RPC error: (LICENSE_REQUIRED|AUTH_REQUIRED): /, "")
+    : undefined;
+  const isAuthError = error?.includes("AUTH_REQUIRED");
+
   return (
     <div className="bg-bg-primary rounded-lg p-4 border border-border-subtle">
       <div className="flex items-start gap-3">
@@ -229,12 +226,12 @@ function ModelCard({
             <span>Min {formatBytes(model.min_memory_mb * 1024 * 1024)} RAM</span>
           </div>
           {/* Error display */}
-          {error && error !== "auth_required" && (
+          {error && !isAuthError && (
             <p className="text-[10px] text-red-400 mt-1.5 flex items-center gap-1">
-              <AlertCircle size={10} /> {error}
+              <AlertCircle size={10} /> {errorDisplay}
             </p>
           )}
-          {error === "auth_required" && (
+          {isAuthError && (
             <p className="text-[10px] text-amber-400 mt-1.5 flex items-center gap-1">
               <KeyRound size={10} /> Requires HuggingFace authentication — enter your token above
             </p>

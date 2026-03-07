@@ -33,6 +33,7 @@ interface ModelState {
   isLoading: boolean;
   downloadingModels: Set<string>;
   downloadProgress: Map<string, DownloadProgress>;
+  downloadErrors: Map<string, string>;
   diskUsage: { used_bytes: number; model_count: number } | null;
 
   loadModels: () => Promise<void>;
@@ -41,6 +42,8 @@ interface ModelState {
   deleteModel: (modelId: string) => Promise<void>;
   loadDiskUsage: () => Promise<void>;
   setDownloadProgress: (progress: DownloadProgress) => void;
+  clearDownloadError: (modelId: string) => void;
+  clearAllDownloadErrors: () => void;
 }
 
 export const useModelStore = create<ModelState>((set, get) => ({
@@ -49,6 +52,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
   isLoading: false,
   downloadingModels: new Set(),
   downloadProgress: new Map(),
+  downloadErrors: new Map(),
   diskUsage: null,
 
   loadModels: async () => {
@@ -71,16 +75,18 @@ export const useModelStore = create<ModelState>((set, get) => ({
       return result.is_first_run;
     } catch (err) {
       log.error("Failed to check first run:", err);
-      // Default to showing wizard on error so user isn't stuck
       set({ isFirstRun: true });
       return true;
     }
   },
 
   downloadModel: async (modelId: string) => {
-    log.info("Downloading model:", modelId);
+    log.info("Starting background download:", modelId);
     const current = get().downloadingModels;
-    set({ downloadingModels: new Set([...current, modelId]) });
+    const errMap = new Map(get().downloadErrors);
+    errMap.delete(modelId);
+    set({ downloadingModels: new Set([...current, modelId]), downloadErrors: errMap });
+
     try {
       await downloadModel(modelId);
       log.info("Download complete:", modelId);
@@ -89,15 +95,15 @@ export const useModelStore = create<ModelState>((set, get) => ({
       const newProgress = new Map(get().downloadProgress);
       newProgress.delete(modelId);
       set({ downloadingModels: newDownloading, downloadProgress: newProgress });
-      // Refresh model list
       await get().loadModels();
       await get().loadDiskUsage();
     } catch (err) {
       log.error("Download failed:", modelId, err);
       const newDownloading = new Set(get().downloadingModels);
       newDownloading.delete(modelId);
-      set({ downloadingModels: newDownloading });
-      // Re-throw so callers can handle the error
+      const newErrors = new Map(get().downloadErrors);
+      newErrors.set(modelId, String(err));
+      set({ downloadingModels: newDownloading, downloadErrors: newErrors });
       throw err;
     }
   },
@@ -128,5 +134,15 @@ export const useModelStore = create<ModelState>((set, get) => ({
     const newMap = new Map(get().downloadProgress);
     newMap.set(progress.model_id, progress);
     set({ downloadProgress: newMap });
+  },
+
+  clearDownloadError: (modelId: string) => {
+    const newErrors = new Map(get().downloadErrors);
+    newErrors.delete(modelId);
+    set({ downloadErrors: newErrors });
+  },
+
+  clearAllDownloadErrors: () => {
+    set({ downloadErrors: new Map() });
   },
 }));

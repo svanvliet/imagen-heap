@@ -65,11 +65,11 @@ fn init_logging() {
 struct SidecarState {
     process: Mutex<Option<Child>>,
     /// Counter for JSON-RPC request IDs
-    next_id: Mutex<u64>,
+    next_id: Arc<Mutex<u64>>,
     /// Pending responses: id -> oneshot sender
     pending: Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>,
     /// Writer to sidecar stdin (shared across commands)
-    writer: Mutex<Option<Box<dyn Write + Send>>>,
+    writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
 }
 
 /// JSON-RPC request
@@ -117,14 +117,17 @@ struct DownloadProgressEvent {
     total_bytes: u64,
 }
 
-/// Send an RPC request and wait for the response (with timeout)
-fn send_rpc(
-    state: &SidecarState,
+/// Send an RPC request using raw components (thread-safe, no State<> dependency)
+fn send_rpc_raw(
+    next_id: &Mutex<u64>,
+    pending: &Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>,
+    writer: &Mutex<Option<Box<dyn Write + Send>>>,
     method: &str,
     params: serde_json::Value,
+    timeout_secs: u64,
 ) -> Result<serde_json::Value, String> {
     let id = {
-        let mut counter = state.next_id.lock().map_err(|e| e.to_string())?;
+        let mut counter = next_id.lock().map_err(|e| e.to_string())?;
         let id = *counter;
         *counter += 1;
         id
@@ -135,8 +138,8 @@ fn send_rpc(
     // Create a channel for this request's response
     let (tx, rx) = std::sync::mpsc::channel();
     {
-        let mut pending = state.pending.lock().map_err(|e| e.to_string())?;
-        pending.insert(id, tx);
+        let mut pend = pending.lock().map_err(|e| e.to_string())?;
+        pend.insert(id, tx);
     }
 
     // Send request
@@ -148,28 +151,27 @@ fn send_rpc(
     };
 
     {
-        let mut writer_lock = state.writer.lock().map_err(|e| {
+        let mut writer_lock = writer.lock().map_err(|e| {
             error!("send_rpc: failed to lock writer: {}", e);
             e.to_string()
         })?;
-        let writer = writer_lock.as_mut().ok_or_else(|| {
+        let w = writer_lock.as_mut().ok_or_else(|| {
             error!("send_rpc: backend not running (writer is None)");
             "Backend not running".to_string()
         })?;
         let request_str = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         debug!("send_rpc: writing request: {}", &request_str[..request_str.len().min(200)]);
-        writeln!(writer, "{}", request_str).map_err(|e| {
+        writeln!(w, "{}", request_str).map_err(|e| {
             error!("send_rpc: write error: {}", e);
             format!("Write error: {}", e)
         })?;
-        writer.flush().map_err(|e| {
+        w.flush().map_err(|e| {
             error!("send_rpc: flush error: {}", e);
             format!("Flush error: {}", e)
         })?;
     }
 
-    // Wait for response (timeout: 5 minutes for generation)
-    let timeout = std::time::Duration::from_secs(300);
+    let timeout = std::time::Duration::from_secs(timeout_secs);
     debug!("send_rpc: waiting for response id={} (timeout={}s)", id, timeout.as_secs());
     let response = rx.recv_timeout(timeout).map_err(|e| {
         error!("send_rpc: timeout/channel error for method={} id={}: {}", method, id, e);
@@ -195,6 +197,15 @@ fn send_rpc(
     })
 }
 
+/// Send an RPC request and wait for the response (convenience wrapper for State<>)
+fn send_rpc(
+    state: &SidecarState,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    send_rpc_raw(&state.next_id, &state.pending, &state.writer, method, params, 300)
+}
+
 /// Ping the Python backend
 #[tauri::command]
 fn ping_backend(state: State<SidecarState>) -> Result<serde_json::Value, String> {
@@ -216,11 +227,19 @@ fn get_backend_status(state: State<SidecarState>) -> Result<String, String> {
     Ok(status)
 }
 
-/// Generate an image
+/// Generate an image (async — can take minutes)
 #[tauri::command]
-fn generate_image(state: State<SidecarState>, config: serde_json::Value) -> Result<serde_json::Value, String> {
+async fn generate_image(state: State<'_, SidecarState>, config: serde_json::Value) -> Result<serde_json::Value, String> {
     info!("Command: generate_image");
-    send_rpc(&state, "generate", config)
+    let next_id = state.next_id.clone();
+    let pending = state.pending.clone();
+    let writer = state.writer.clone();
+
+    tokio::task::spawn_blocking(move || {
+        send_rpc_raw(&next_id, &pending, &writer, "generate", config, 600)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Get all models with status
@@ -246,11 +265,21 @@ fn get_default_downloads(state: State<SidecarState>) -> Result<serde_json::Value
     send_rpc(&state, "get_default_downloads", serde_json::json!({}))
 }
 
-/// Download a model
+/// Download a model (async — runs on background thread to avoid blocking UI)
 #[tauri::command]
-fn download_model(state: State<SidecarState>, model_id: String) -> Result<serde_json::Value, String> {
+async fn download_model(state: State<'_, SidecarState>, model_id: String) -> Result<serde_json::Value, String> {
     info!("Command: download_model model_id={}", model_id);
-    send_rpc(&state, "download_model", serde_json::json!({"model_id": model_id}))
+
+    // Clone Arc-wrapped components so we can send them to a background thread
+    let next_id = state.next_id.clone();
+    let pending = state.pending.clone();
+    let writer = state.writer.clone();
+
+    tokio::task::spawn_blocking(move || {
+        send_rpc_raw(&next_id, &pending, &writer, "download_model", serde_json::json!({"model_id": model_id}), 3600)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Delete a model
@@ -400,9 +429,9 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(SidecarState {
             process: Mutex::new(None),
-            next_id: Mutex::new(1),
+            next_id: Arc::new(Mutex::new(1)),
             pending: pending_for_state,
-            writer: Mutex::new(None),
+            writer: Arc::new(Mutex::new(None)),
         })
         .setup(move |app| {
             let resource_dir = app

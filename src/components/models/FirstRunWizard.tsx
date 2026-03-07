@@ -24,54 +24,51 @@ interface FirstRunWizardProps {
 export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
   const [step, setStep] = useState<WizardStep>("welcome");
   const [defaults, setDefaults] = useState<DefaultModel[]>([]);
-  const [downloadStatus, setDownloadStatus] = useState<Record<string, "pending" | "downloading" | "done" | "error">>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [hfToken, setHfToken] = useState("");
   const [savingToken, setSavingToken] = useState(false);
+
+  // Read global download state from store — persists across wizard/catalog navigation
   const downloadModelAction = useModelStore((s) => s.downloadModel);
+  const downloadingModels = useModelStore((s) => s.downloadingModels);
   const downloadProgress = useModelStore((s) => s.downloadProgress);
+  const downloadErrors = useModelStore((s) => s.downloadErrors);
+  const models = useModelStore((s) => s.models);
 
   useEffect(() => {
-    getDefaultDownloads().then((models) => {
-      setDefaults(models as DefaultModel[]);
-      const status: Record<string, "pending" | "downloading" | "done" | "error"> = {};
-      for (const m of models as DefaultModel[]) {
-        status[m.id] = m.already_downloaded ? "done" : "pending";
-      }
-      setDownloadStatus(status);
-    });
+    getDefaultDownloads().then((m) => setDefaults(m as DefaultModel[]));
   }, []);
 
-  const anyDownloaded = defaults.some((m) => downloadStatus[m.id] === "done");
-  const anyDownloading = defaults.some((m) => downloadStatus[m.id] === "downloading");
-  const allDone = defaults.length > 0 && defaults.every((m) => downloadStatus[m.id] === "done");
-
-  const handleDownloadOne = async (modelId: string) => {
-    setDownloadStatus((prev) => ({ ...prev, [modelId]: "downloading" }));
-    setErrors((prev) => { const next = { ...prev }; delete next[modelId]; return next; });
-    try {
-      await downloadModelAction(modelId);
-      setDownloadStatus((prev) => ({ ...prev, [modelId]: "done" }));
-    } catch (err) {
-      const msg = String(err);
-      log.error("Download failed:", modelId, msg);
-      setDownloadStatus((prev) => ({ ...prev, [modelId]: "error" }));
-      if (msg.includes("AUTH_REQUIRED")) {
-        setErrors((prev) => ({ ...prev, [modelId]: "auth_required" }));
-        setShowTokenInput(true);
-      } else if (msg.includes("LICENSE_REQUIRED")) {
-        setErrors((prev) => ({ ...prev, [modelId]: msg.replace("LICENSE_REQUIRED: ", "") }));
-      } else {
-        setErrors((prev) => ({ ...prev, [modelId]: msg }));
-      }
-    }
+  // Derive status from global store
+  const getStatus = (modelId: string): "pending" | "downloading" | "done" | "error" => {
+    if (downloadingModels.has(modelId)) return "downloading";
+    if (downloadErrors.has(modelId)) return "error";
+    // Check if model is already downloaded (from store or defaults)
+    const model = models.find((m) => m.id === modelId);
+    if (model?.status === "downloaded") return "done";
+    const def = defaults.find((d) => d.id === modelId);
+    if (def?.already_downloaded) return "done";
+    return "pending";
   };
 
-  const handleDownloadAll = async () => {
+  const anyDownloaded = defaults.some((m) => getStatus(m.id) === "done");
+  const anyDownloading = defaults.some((m) => getStatus(m.id) === "downloading");
+  const allDone = defaults.length > 0 && defaults.every((m) => getStatus(m.id) === "done");
+
+  const handleDownloadOne = (modelId: string) => {
+    // Fire-and-forget: the store tracks status, errors propagate to downloadErrors
+    downloadModelAction(modelId).catch((err) => {
+      const msg = String(err);
+      if (msg.includes("AUTH_REQUIRED")) {
+        setShowTokenInput(true);
+      }
+    });
+  };
+
+  const handleDownloadAll = () => {
     for (const model of defaults) {
-      if (downloadStatus[model.id] === "done") continue;
-      await handleDownloadOne(model.id);
+      if (getStatus(model.id) === "done" || getStatus(model.id) === "downloading") continue;
+      handleDownloadOne(model.id);
     }
   };
 
@@ -82,8 +79,7 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
       await saveHfToken(hfToken.trim());
       log.info("HF token saved");
       setShowTokenInput(false);
-      // Clear auth errors and retry
-      setErrors({});
+      useModelStore.getState().clearAllDownloadErrors();
     } catch (err) {
       log.error("Failed to save token:", err);
     }
@@ -147,7 +143,7 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
                 </p>
               </div>
 
-              {/* HF Token input — shown when gated repo auth is needed */}
+              {/* HF Token input */}
               {showTokenInput && (
                 <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 space-y-3">
                   <div className="flex items-start gap-2">
@@ -188,8 +184,8 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
 
               <div className="space-y-2">
                 {defaults.map((model) => {
-                  const status = downloadStatus[model.id];
-                  const error = errors[model.id];
+                  const status = getStatus(model.id);
+                  const error = downloadErrors.get(model.id);
                   const progress = downloadProgress.get(model.id);
 
                   return (
@@ -220,8 +216,7 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
                           ) : (
                             <button
                               onClick={() => handleDownloadOne(model.id)}
-                              disabled={anyDownloading}
-                              className="px-2.5 py-1 rounded-md bg-accent hover:bg-accent-hover text-white text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-1"
+                              className="px-2.5 py-1 rounded-md bg-accent hover:bg-accent-hover text-white text-xs font-medium transition-colors flex items-center gap-1"
                             >
                               <Download size={12} />
                               Download
@@ -246,8 +241,10 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
                       )}
 
                       {/* Error message */}
-                      {error && error !== "auth_required" && (
-                        <p className="text-[10px] text-red-400 mt-1 line-clamp-2">{error}</p>
+                      {error && !error.includes("AUTH_REQUIRED") && (
+                        <p className="text-[10px] text-red-400 mt-1 line-clamp-2">
+                          {error.replace(/^RPC error: (LICENSE_REQUIRED|AUTH_REQUIRED): /, "")}
+                        </p>
                       )}
                     </div>
                   );
@@ -266,16 +263,14 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
                 )}
                 <button
                   onClick={() => anyDownloaded || allDone ? setStep("complete") : onComplete()}
-                  disabled={anyDownloading}
                   className={cn(
                     "py-2.5 rounded-lg font-medium text-sm transition-colors",
                     allDone
                       ? "flex-1 bg-accent hover:bg-accent-hover text-white"
                       : "flex-1 bg-bg-primary hover:bg-bg-hover text-text-secondary border border-border-default",
-                    anyDownloading && "opacity-50 cursor-not-allowed",
                   )}
                 >
-                  {allDone ? "Continue" : anyDownloaded ? "Continue anyway" : "Skip for now"}
+                  {allDone ? "Continue" : anyDownloaded ? "Continue anyway" : anyDownloading ? "Continue in background" : "Skip for now"}
                 </button>
               </div>
             </div>
