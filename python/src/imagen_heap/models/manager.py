@@ -137,6 +137,7 @@ class ModelManager:
 
             # Use provided token, or fall back to saved token, or cached login
             token = hf_token or self._load_hf_token()
+            logger.info("Using HF token: %s", "provided" if hf_token else ("saved" if token else "none"))
 
             local_path = snapshot_download(
                 repo_id=entry.hf_repo_id,
@@ -162,7 +163,14 @@ class ModelManager:
             error_str = str(e)
             logger.exception("HuggingFace download failed for %s", model_id)
 
-            # Provide a helpful error for gated repos
+            # Differentiate: 403 "not in authorized list" = need to accept license on HF website
+            if "not in the authorized list" in error_str or ("403" in error_str and "gated" in error_str.lower()):
+                raise RuntimeError(
+                    f"LICENSE_REQUIRED: Model '{entry.name}' requires you to accept its license. "
+                    f"Visit {entry.source_url} and click 'Agree and access repository', then retry."
+                ) from e
+
+            # 401 / generic gated = need HF token
             if "gated" in error_str.lower() or "401" in error_str:
                 raise RuntimeError(
                     f"AUTH_REQUIRED: Model '{entry.name}' requires HuggingFace authentication. "

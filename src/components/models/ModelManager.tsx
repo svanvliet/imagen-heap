@@ -55,6 +55,8 @@ export function ModelManager({ onClose }: ModelManagerProps) {
       if (msg.includes("AUTH_REQUIRED")) {
         setDownloadErrors((prev) => ({ ...prev, [modelId]: "auth_required" }));
         setShowTokenInput(true);
+      } else if (msg.includes("LICENSE_REQUIRED")) {
+        setDownloadErrors((prev) => ({ ...prev, [modelId]: msg.replace("LICENSE_REQUIRED: ", "") }));
       } else {
         setDownloadErrors((prev) => ({ ...prev, [modelId]: msg }));
       }

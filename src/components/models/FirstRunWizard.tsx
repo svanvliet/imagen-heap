@@ -60,6 +60,8 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
       if (msg.includes("AUTH_REQUIRED")) {
         setErrors((prev) => ({ ...prev, [modelId]: "auth_required" }));
         setShowTokenInput(true);
+      } else if (msg.includes("LICENSE_REQUIRED")) {
+        setErrors((prev) => ({ ...prev, [modelId]: msg.replace("LICENSE_REQUIRED: ", "") }));
       } else {
         setErrors((prev) => ({ ...prev, [modelId]: msg }));
       }
