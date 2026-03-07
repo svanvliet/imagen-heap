@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M1 — Project Scaffold & Core Shell
+## Current Phase: M1 — Project Scaffold & Core Shell ✅
 
 ### Progress Log
 
@@ -9,4 +9,16 @@
 - **06:13** — Starting implementation. M1 in progress.
   - Repo has: docs/ (requirements.md, research.md, plan.md)
   - Toolchains verified: Node 22.21.0, npm 10.9.4, Rust 1.93.1, Python 3.12.12
-  - Starting with Tauri project initialization
+- **06:15** — M1 scaffold complete:
+  - Tauri project initialized with React+TS template
+  - Tailwind CSS v4, shadcn/ui (Radix), Zustand, framer-motion, lucide-react installed
+  - Design system: globals.css with zinc/indigo tokens, dark-first, animations, custom scrollbar
+  - Layout components: AppShell, Toolbar, Sidebar, Panel, Canvas, Filmstrip, StatusBar
+  - Generation components: PromptInput, QualityToggle, AspectRatioSelector, GenerateButton
+  - Zustand stores: ui, generation, backend
+  - TypeScript types: generation, character, model
+  - Utility functions: cn(), formatBytes(), formatDuration(), randomSeed()
+  - Python sidecar: JSON-RPC 2.0 server, StubProvider, ping/device_info/memory_status handlers
+  - Rust backend: sidecar manager, JSON-RPC client, ping_backend/get_backend_status commands
+  - Tests: 16 frontend (vitest), 14 Python (pytest) — all passing
+  - Tauri build: successful (.app + .dmg produced)
