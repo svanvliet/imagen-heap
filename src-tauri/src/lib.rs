@@ -171,8 +171,8 @@ fn send_rpc(
     debug!("send_rpc: got response id={}: {}", id,
         serde_json::to_string(&response).unwrap_or_default().chars().take(200).collect::<String>());
 
-    // Check for error in response
-    if let Some(err) = response.get("error") {
+    // Check for error in response (ignore null — serde serializes None as null)
+    if let Some(err) = response.get("error").filter(|v| !v.is_null()) {
         if let Some(msg) = err.get("message").and_then(|m| m.as_str()) {
             error!("send_rpc: RPC error for method={}: {}", method, msg);
             return Err(format!("RPC error: {}", msg));
