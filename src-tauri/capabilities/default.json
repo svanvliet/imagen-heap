@@ -10,13 +10,6 @@
     {
       "identifier": "core:default",
       "allow": [{ "path": "$HOME/**" }]
-    },
-    {
-      "identifier": "core:asset:default",
-      "allow": [
-        { "path": "$HOME/.imagen-heap/**" },
-        { "path": "$HOME/.cache/huggingface/**" }
-      ]
     }
   ]
 }
