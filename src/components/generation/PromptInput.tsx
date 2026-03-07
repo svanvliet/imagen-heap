@@ -2,8 +2,9 @@ import { useGenerationStore } from "@/stores/generation";
 import { usePromptHistoryStore } from "@/stores/promptHistory";
 import { STYLE_PRESETS } from "@/lib/constants";
 import { useRef, useCallback, useState, useEffect } from "react";
-import { Clock, X, Trash2, Search } from "lucide-react";
+import { Clock, X, Trash2, Search, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TemplatesBrowser } from "./TemplatesBrowser";
 
 export function PromptInput() {
   const prompt = useGenerationStore((s) => s.prompt);
@@ -15,6 +16,7 @@ export function PromptInput() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [showHistory, setShowHistory] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredEntries = searchQuery
@@ -99,6 +101,18 @@ export function PromptInput() {
           Prompt
         </label>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => { setShowTemplates(!showTemplates); setShowHistory(false); }}
+            className={cn(
+              "p-0.5 rounded transition-colors",
+              showTemplates
+                ? "text-accent"
+                : "text-text-muted hover:text-text-secondary"
+            )}
+            title="Prompt templates"
+          >
+            <FileText size={12} />
+          </button>
           {prompt.length > 0 && (
             <button
               onClick={handleClear}
@@ -110,7 +124,7 @@ export function PromptInput() {
           )}
           {entries.length > 0 && (
             <button
-              onClick={() => { setShowHistory(!showHistory); setSearchQuery(""); }}
+              onClick={() => { setShowHistory(!showHistory); setShowTemplates(false); setSearchQuery(""); }}
               className={cn(
                 "p-0.5 rounded transition-colors",
                 showHistory
@@ -210,6 +224,11 @@ export function PromptInput() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Templates browser */}
+      {showTemplates && (
+        <TemplatesBrowser onClose={() => setShowTemplates(false)} />
       )}
     </div>
   );
