@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { getModels, isFirstRun, downloadModel, deleteModel, getDiskUsage } from "@/lib/tauri";
 import { createLogger } from "@/lib/logger";
 
@@ -50,7 +51,9 @@ interface ModelState {
   getDownloadedModels: () => ModelInfo[];
 }
 
-export const useModelStore = create<ModelState>((set, get) => ({
+export const useModelStore = create<ModelState>()(
+  persist(
+    (set, get) => ({
   models: [],
   selectedModelId: null,
   isFirstRun: null,
@@ -185,4 +188,12 @@ export const useModelStore = create<ModelState>((set, get) => ({
   clearAllDownloadErrors: () => {
     set({ downloadErrors: new Map() });
   },
-}));
+}),
+    {
+      name: "imagen-heap-models",
+      partialize: (state) => ({
+        selectedModelId: state.selectedModelId,
+      }),
+    }
+  )
+);

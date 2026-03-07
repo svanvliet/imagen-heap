@@ -158,6 +158,15 @@ export const useGenerationStore = create<GenerationState>()(
     {
       name: "imagen-heap-generation",
       partialize: (state) => ({
+        prompt: state.prompt,
+        negativePrompt: state.negativePrompt,
+        qualityProfile: state.qualityProfile,
+        stylePresetId: state.stylePresetId,
+        aspectRatio: state.aspectRatio,
+        seed: state.seed,
+        seedLocked: state.seedLocked,
+        steps: state.steps,
+        cfg: state.cfg,
         history: state.history,
         currentImage: state.currentImage,
       }),
