@@ -41,3 +41,54 @@ export async function generateImage(config: {
 }> {
   return invoke("generate_image", { config });
 }
+
+/** Get all models with download status */
+export async function getModels(): Promise<Array<{
+  id: string;
+  name: string;
+  version: string;
+  architecture: string;
+  license_spdx: string;
+  file_size_bytes: number;
+  quantization: string;
+  min_memory_mb: number;
+  source_url: string;
+  is_default: boolean;
+  description: string;
+  status: string;
+  local_path: string | null;
+  downloaded_at: string | null;
+}>> {
+  return invoke("get_models");
+}
+
+/** Check if first run (no models downloaded) */
+export async function isFirstRun(): Promise<{ is_first_run: boolean }> {
+  return invoke("is_first_run");
+}
+
+/** Get default models for first-run download */
+export async function getDefaultDownloads(): Promise<Array<{
+  id: string;
+  name: string;
+  file_size_bytes: number;
+  quantization: string;
+  already_downloaded: boolean;
+}>> {
+  return invoke("get_default_downloads");
+}
+
+/** Download a model */
+export async function downloadModel(modelId: string): Promise<Record<string, unknown>> {
+  return invoke("download_model", { modelId });
+}
+
+/** Delete a model */
+export async function deleteModel(modelId: string): Promise<{ success: boolean; model_id: string }> {
+  return invoke("delete_model", { modelId });
+}
+
+/** Get disk usage */
+export async function getDiskUsage(): Promise<{ used_bytes: number; model_count: number }> {
+  return invoke("get_disk_usage");
+}

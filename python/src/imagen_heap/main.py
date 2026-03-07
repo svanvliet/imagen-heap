@@ -16,6 +16,7 @@ from imagen_heap import __version__
 from imagen_heap.rpc.server import RpcServer
 from imagen_heap.providers import StubProvider
 from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig
+from imagen_heap.models.manager import ModelManager
 
 # Configure logging to stderr (stdout is reserved for RPC)
 logging.basicConfig(
@@ -39,12 +40,16 @@ def create_server() -> RpcServer:
     server = RpcServer()
     provider = StubProvider()
 
-    # Determine output directory
-    output_dir = os.environ.get(
-        "IMAGEN_HEAP_OUTPUT_DIR",
-        os.path.expanduser("~/Documents/ImagenHeap/generations"),
+    # Determine directories
+    base_dir = os.environ.get(
+        "IMAGEN_HEAP_DATA_DIR",
+        os.path.expanduser("~/Documents/ImagenHeap"),
     )
+    output_dir = os.path.join(base_dir, "generations")
+    models_dir = os.path.join(base_dir, "models")
+
     orchestrator = PipelineOrchestrator(output_dir=output_dir, provider=provider)
+    model_manager = ModelManager(models_dir=models_dir)
 
     # --- Core methods ---
 
@@ -100,10 +105,60 @@ def create_server() -> RpcServer:
         result = orchestrator.generate(config, progress_callback=on_progress)
         return result.to_dict()
 
+    # --- Model management methods ---
+
+    def handle_get_models(params: dict) -> list[dict]:
+        """Get all models with download status."""
+        return model_manager.get_all_models()
+
+    def handle_get_downloaded_models(params: dict) -> list[dict]:
+        """Get only downloaded models."""
+        return model_manager.get_downloaded_models()
+
+    def handle_get_default_downloads(params: dict) -> list[dict]:
+        """Get the default model set for first-run download."""
+        return model_manager.get_default_download_list()
+
+    def handle_is_first_run(params: dict) -> dict:
+        """Check if this is the first run."""
+        return {"is_first_run": model_manager.is_first_run()}
+
+    def handle_download_model(params: dict) -> dict:
+        """Download a model (simulated for now)."""
+        model_id = params.get("model_id", "")
+        if not model_id:
+            raise ValueError("model_id is required")
+
+        def on_download_progress(mid: str, downloaded: int, total: int) -> None:
+            _send_notification("download_progress", {
+                "model_id": mid,
+                "bytes_downloaded": downloaded,
+                "total_bytes": total,
+            })
+
+        return model_manager.simulate_download(model_id, progress_callback=on_download_progress)
+
+    def handle_delete_model(params: dict) -> dict:
+        """Delete a downloaded model."""
+        model_id = params.get("model_id", "")
+        success = model_manager.delete_model(model_id)
+        return {"success": success, "model_id": model_id}
+
+    def handle_get_disk_usage(params: dict) -> dict:
+        """Get disk usage of downloaded models."""
+        return model_manager.get_disk_usage()
+
     server.register("ping", handle_ping)
     server.register("get_device_info", handle_get_device_info)
     server.register("get_memory_status", handle_get_memory_status)
     server.register("generate", handle_generate)
+    server.register("get_models", handle_get_models)
+    server.register("get_downloaded_models", handle_get_downloaded_models)
+    server.register("get_default_downloads", handle_get_default_downloads)
+    server.register("is_first_run", handle_is_first_run)
+    server.register("download_model", handle_download_model)
+    server.register("delete_model", handle_delete_model)
+    server.register("get_disk_usage", handle_get_disk_usage)
 
     return server
 

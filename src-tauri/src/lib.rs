@@ -127,6 +127,42 @@ fn generate_image(state: State<SidecarState>, config: serde_json::Value) -> Resu
     send_rpc(&state, "generate", config)
 }
 
+/// Get all models with status
+#[tauri::command]
+fn get_models(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    send_rpc(&state, "get_models", serde_json::json!({}))
+}
+
+/// Check if first run
+#[tauri::command]
+fn is_first_run(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    send_rpc(&state, "is_first_run", serde_json::json!({}))
+}
+
+/// Get default models for first-run download
+#[tauri::command]
+fn get_default_downloads(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    send_rpc(&state, "get_default_downloads", serde_json::json!({}))
+}
+
+/// Download a model
+#[tauri::command]
+fn download_model(state: State<SidecarState>, model_id: String) -> Result<serde_json::Value, String> {
+    send_rpc(&state, "download_model", serde_json::json!({"model_id": model_id}))
+}
+
+/// Delete a model
+#[tauri::command]
+fn delete_model(state: State<SidecarState>, model_id: String) -> Result<serde_json::Value, String> {
+    send_rpc(&state, "delete_model", serde_json::json!({"model_id": model_id}))
+}
+
+/// Get disk usage
+#[tauri::command]
+fn get_disk_usage(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    send_rpc(&state, "get_disk_usage", serde_json::json!({}))
+}
+
 /// Start the Python sidecar process and set up the stdout reader thread
 fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, pending: Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>) -> Result<(Child, Box<dyn Write + Send>), String> {
     info!("Starting Python sidecar: {} {}", python_path, script_path);
@@ -271,7 +307,17 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![ping_backend, get_backend_status, generate_image])
+        .invoke_handler(tauri::generate_handler![
+            ping_backend,
+            get_backend_status,
+            generate_image,
+            get_models,
+            is_first_run,
+            get_default_downloads,
+            download_model,
+            delete_model,
+            get_disk_usage,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -1,20 +1,25 @@
+import { useState } from "react";
 import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   Sparkles,
   Layers,
+  Database,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
+import { ModelManager } from "@/components/models/ModelManager";
 
 export function Toolbar() {
   const mode = useUIStore((s) => s.mode);
   const setMode = useUIStore((s) => s.setMode);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const [showModelManager, setShowModelManager] = useState(false);
 
   return (
+    <>
     <div className="h-12 border-b border-border-default bg-bg-secondary flex items-center px-3 gap-2 flex-shrink-0">
       {/* Sidebar toggle */}
       <button
@@ -67,6 +72,15 @@ export function Toolbar() {
         </button>
       </div>
 
+      {/* Models */}
+      <button
+        onClick={() => setShowModelManager(true)}
+        className="p-1.5 rounded-md hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
+        aria-label="Model Manager"
+      >
+        <Database size={18} />
+      </button>
+
       {/* Settings */}
       <button
         className="p-1.5 rounded-md hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors ml-2"
@@ -75,5 +89,10 @@ export function Toolbar() {
         <Settings size={18} />
       </button>
     </div>
+
+    {showModelManager && (
+      <ModelManager onClose={() => setShowModelManager(false)} />
+    )}
+    </>
   );
 }
