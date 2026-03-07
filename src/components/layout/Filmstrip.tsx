@@ -15,12 +15,19 @@ export function Filmstrip() {
     item: GenerationResult;
   } | null>(null);
 
-  // Close context menu on click
+  // Close context menu on click outside
   useEffect(() => {
     if (!contextMenu) return;
-    const handler = () => setContextMenu(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-context-menu]")) return;
+      setContextMenu(null);
+    };
+    const id = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener("mousedown", handler);
+    };
   }, [contextMenu]);
 
   const handleSaveAs = useCallback(async (item: GenerationResult) => {
@@ -77,30 +84,31 @@ export function Filmstrip() {
       {/* Filmstrip context menu */}
       {contextMenu && (
         <div
+          data-context-menu
           className="fixed z-[100] bg-bg-secondary border border-border-default rounded-lg shadow-xl py-1 min-w-[160px] animate-fade-in"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            onClick={() => handleSaveAs(contextMenu.item)}
+            onClick={() => { handleSaveAs(contextMenu.item); setContextMenu(null); }}
             className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
             Save As…
           </button>
           <button
-            onClick={() => handleCopyToClipboard(contextMenu.item)}
+            onClick={() => { handleCopyToClipboard(contextMenu.item); setContextMenu(null); }}
             className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
             Copy to Clipboard
           </button>
           <div className="h-px bg-border-default my-1" />
           <button
-            onClick={() => navigator.clipboard.writeText(contextMenu.item.config.prompt)}
+            onClick={() => { navigator.clipboard.writeText(contextMenu.item.config.prompt); setContextMenu(null); }}
             className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
             Copy Prompt
           </button>
           <button
-            onClick={() => navigator.clipboard.writeText(String(contextMenu.item.config.seed))}
+            onClick={() => { navigator.clipboard.writeText(String(contextMenu.item.config.seed)); setContextMenu(null); }}
             className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
             Copy Seed

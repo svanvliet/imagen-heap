@@ -89,9 +89,18 @@ export function Canvas() {
   // Close context menu on click outside
   useEffect(() => {
     if (!showContextMenu) return;
-    const handler = () => setShowContextMenu(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    const handler = (e: MouseEvent) => {
+      // Let menu item clicks process first
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-context-menu]")) return;
+      setShowContextMenu(null);
+    };
+    // Use timeout so menu renders before listener attaches
+    const id = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener("mousedown", handler);
+    };
   }, [showContextMenu]);
 
   return (
@@ -256,14 +265,15 @@ export function Canvas() {
       {/* Right-click context menu */}
       {showContextMenu && currentImage && (
         <div
+          data-context-menu
           className="fixed z-[100] bg-bg-secondary border border-border-default rounded-lg shadow-xl py-1 min-w-[160px] animate-fade-in"
           style={{ left: showContextMenu.x, top: showContextMenu.y }}
         >
-          <ContextMenuItem label="Save As…" onClick={handleSaveAs} />
-          <ContextMenuItem label={copied ? "Copied!" : "Copy to Clipboard"} onClick={handleCopyToClipboard} />
+          <ContextMenuItem label="Save As…" onClick={() => { handleSaveAs(); setShowContextMenu(null); }} />
+          <ContextMenuItem label={copied ? "Copied!" : "Copy to Clipboard"} onClick={() => { handleCopyToClipboard(); setShowContextMenu(null); }} />
           <div className="h-px bg-border-default my-1" />
-          <ContextMenuItem label="Copy Prompt" onClick={handleCopyPrompt} />
-          <ContextMenuItem label="Copy Seed" onClick={handleCopySeed} />
+          <ContextMenuItem label="Copy Prompt" onClick={() => { handleCopyPrompt(); setShowContextMenu(null); }} />
+          <ContextMenuItem label="Copy Seed" onClick={() => { handleCopySeed(); setShowContextMenu(null); }} />
         </div>
       )}
     </div>
