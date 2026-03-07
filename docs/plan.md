@@ -153,7 +153,7 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 
 The MVP is broken into 10 milestones. Each milestone produces a working, testable increment.
 
-> **Implementation note (M1–M4 status):** M1 (scaffold), M2 (generation UI/pipeline), M2b (real inference & downloads), M3 (model management), and M4 (style presets & prompt tools) are all complete. Real FLUX image generation is working end-to-end on Apple Silicon via MLX. Two models downloaded: flux-schnell-mflux-q8 (17GB) and flux-dev-q8 (54GB). App icon, build scripts, settings persistence, and prompt templates all shipped. Next: M5 (Gallery & History).
+> **Implementation note (M1–M5 status):** M1 (scaffold), M2 (generation UI/pipeline), M2b (real inference & downloads), M3 (model management), and M4 (style presets & prompt tools) are all complete. M5 character system CRUD + UI is done; Redux adapter integration (5.5) is next. Real FLUX image generation is working end-to-end on Apple Silicon via MLX. Two models downloaded: flux-schnell-mflux-q8 (17GB) and flux-dev-q8 (54GB). App icon, build scripts, settings persistence, prompt templates, and v0.1.0 release all shipped. Next: M5.5 (Redux adapter).
 
 ---
 
@@ -582,62 +582,83 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ### Milestone 5: Character System
 
-**Goal:** Users create Character Cards, apply them to generations, and get consistent character identity across scenes.
+**Goal:** Users create Character Cards, apply them to generations, and get consistent character identity across scenes using mflux Redux adapter.
+
+> **Implementation note (M5 status):** Tasks 5.2–5.4 are complete. Character CRUD, avatar row UI, creation dialog, strength control, and pipeline metadata wiring all shipped. Task 5.1 has been revised from InstantID/PhotoMaker/PuLID (not available in mflux) to use the **Redux adapter** which is natively supported. Task 5.5 (Redux integration) is the remaining work.
 
 #### Tasks
 
-**5.1 — Python: Identity adapter integration**
-- Implement identity adapter manager:
-  - `InstantIDAdapter` — for single-face reference (default)
-  - `PhotoMakerAdapter` — for multi-reference images
-  - `PuLIDAdapter` — for FLUX-specific workflows
-- Auto-selection heuristic (CC-002):
-  - 1 face image + FLUX model → PuLID-FLUX
-  - 1 face image + other model → InstantID
-  - 2+ reference images → PhotoMaker
-  - User can override in Advanced Mode
-- Each adapter: `prepare(reference_images)`, `apply(pipeline, strength)`, `get_memory_estimate()`
-- Face detection/cropping preprocessing for reference images
-- Identity strength parameter (0.0–1.0) maps to adapter weight
+**5.1 — Python: Identity adapter integration (REVISED)** ✅ → replaced by 5.5
 
-**5.2 — Character Card CRUD**
-- RPC methods: `create_character`, `update_character`, `delete_character`, `list_characters`, `get_character`
-- Character data stored in SQLite `characters` + `character_images` tables
-- Reference images copied to user data directory (not referenced from original location)
-- Auto-generate thumbnail from first reference image
+~~Original plan called for InstantID, PhotoMaker, PuLID adapters. Research confirmed these are PyTorch/CUDA-only with no MLX ports. See `docs/research.md` §8 for full analysis.~~
 
-**5.3 — Character Card UI**
-- **Character avatar row** (above prompt in left sidebar):
-  - Horizontal row of small circular avatars
-  - Selected character has accent ring
-  - "None" option (no character) as first item
-  - "+" button to create new character
-  - Click avatar to select; long-press or right-click for edit/delete
-- **Character creation dialog:**
-  - Modal overlay with clean form:
-    - Name field (required)
-    - Drag-and-drop zone for 1–5 reference images (shows previews in a grid)
-    - Optional text description textarea ("Describe features, clothing, etc.")
-    - Auto-detected adapter type shown as info badge
-    - "Create" button
-  - After creation: character appears in avatar row, auto-selected
-- **Character detail panel** (right panel, when a character is selected):
-  - Shows reference images, name, description
-  - Identity strength slider ("Subtle" — "Balanced" — "Strong")
-  - Adapter type info (auto-selected or manual override in Advanced Mode)
-  - "Edit" and "Delete" buttons
-  - Last used date
-- **Identity strength slider:**
-  - In Simple Mode: 3-position preset (Subtle=0.3, Balanced=0.6, Strong=0.9)
-  - In Advanced Mode: continuous 0.0–1.0 slider
+**Replaced by:** Task 5.5 (Redux adapter integration) below.
 
-**5.4 — Generation with character**
-- When a character is selected, generation pipeline includes identity adapter
-- Pre-generation memory check: warn if character + model + resolution may exceed memory
-- Metadata records: character ID, adapter type, adapter strength
-- Character's `last_used_at` updated on each generation
+**5.2 — Character Card CRUD** ✅
 
-**Deliverable:** Users create characters from face images, select them from an avatar row, and generate images with consistent character identity. Strength is controllable.
+- CharacterManager class with JSON file storage in `~/.imagen-heap/characters/{id}/`
+- RPC handlers: `list_characters`, `create_character`, `update_character`, `delete_character`, `get_character`
+- Reference images copied to character directory, thumbnail auto-generated via PIL
+- 5 Rust Tauri commands registered and forwarding to Python RPC
+- TypeScript API wrappers + Character type in `types/generation.ts`
+- Zustand character store with persistence (`selectedCharacterId`, `characterStrength`)
+
+**5.3 — Character Card UI** ✅
+
+- **CharacterAvatarRow**: horizontal scrolling circular avatars in sidebar, accent ring selection, "None" button, "+" create button, right-click context menu with delete
+- **CharacterCreateDialog**: modal with name field, description textarea, native file picker (tauri-plugin-dialog) for 1–5 reference images with preview grid, Create button, auto-selects on creation
+- **CharacterStrengthControl**: 3 presets (Subtle 0.3 / Balanced 0.6 / Strong 0.9) + fine-tune slider with percentage display
+- Character section placed above Prompt in sidebar
+- Character name badge in Canvas metadata display
+
+**5.4 — Generation with character (metadata wiring)** ✅
+
+- GenerationConfig extended with `character_id` and `character_strength` (Python + TypeScript)
+- useGeneration hook passes character params to generateImage API call
+- Character's `last_used_at` updated on each generation via `character_manager.mark_used()`
+- Character info stored in generation result metadata
+
+**5.5 — Redux adapter integration** 🔲 NEW
+
+Wire `Flux1Redux` from mflux into the generation pipeline so character reference images actually influence the generated output.
+
+- **5.5.1 — MLXProvider: Redux mode**
+  - When `character_id` is set, switch from `Flux1` to `Flux1Redux` for generation
+  - `Flux1Redux` requires FLUX.1-dev model — validate that a dev-variant model is selected
+  - If user has schnell selected + character active, show warning/auto-switch to dev model
+  - Cache `Flux1Redux` instance separately from `Flux1` to avoid reloading
+  - Pass character's `reference_images[]` as `redux_image_paths`
+  - Apply `character_strength` uniformly across all images as `redux_image_strengths`
+  - Inherit all other params (prompt, seed, steps, cfg→guidance, width, height)
+  - Progress callback works the same way (step reporting)
+
+- **5.5.2 — CharacterManager: resolve image paths for pipeline**
+  - Add `get_reference_image_paths(character_id)` method
+  - Returns list of absolute paths to the character's reference images
+  - Called by the generate handler before invoking the pipeline
+  - Validate paths exist, skip missing files, warn if < 1 image remains
+
+- **5.5.3 — Generate handler: wire character into pipeline**
+  - In `handle_generate()`, if `character_id` is set:
+    1. Resolve reference image paths via CharacterManager
+    2. Pass `reference_image_paths` and `character_strength` to orchestrator
+  - Orchestrator passes to provider's `text_to_image_with_character()` method
+  - If no character, pipeline behaves exactly as before (no regression)
+
+- **5.5.4 — Frontend: model compatibility check**
+  - When a character is selected and model is schnell-only, show inline warning
+  - "Character mode requires FLUX.1-dev" with option to switch model
+  - GenerateButton shows character-active indicator (small avatar badge)
+
+- **5.5.5 — Testing and validation**
+  - Test: generate without character → standard Flux1 → works as before
+  - Test: generate with character + dev model → Flux1Redux → image shows character influence
+  - Test: generate with character + schnell model → warning/fallback behavior
+  - Test: character with 1 image, 3 images, 5 images
+  - Test: different strength levels produce visibly different influence
+  - Redux encoder auto-downloads on first character generation
+
+**Deliverable:** Selecting a character and generating actually produces images influenced by the character's reference photos. Strength slider controls how much. Standard generation (no character) unchanged.
 
 ---
 

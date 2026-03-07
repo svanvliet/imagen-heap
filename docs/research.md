@@ -244,3 +244,93 @@ If executed well, this gives you a strong product wedge: **“local-first AI ima
 - Diffusers: https://github.com/huggingface/diffusers  
 - Tauri: https://tauri.app/  
 - Electron: https://github.com/electron/electron
+
+---
+
+## 8) Identity Adapter Research — Redux for Character System (March 2026)
+
+### Context
+
+For M5 (Character System), we investigated which identity/character-consistency adapters are feasible with our mflux 0.16.8 stack running on Apple Silicon via MLX. The plan originally called for InstantID, PhotoMaker, and PuLID, but these are PyTorch/CUDA-centric and have no native MLX implementations.
+
+### Findings
+
+#### What mflux 0.16.8 actually supports natively
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Text-to-image (`Flux1`) | ✅ | Our current pipeline |
+| Image-to-image | ✅ | Resume denoising from input image |
+| **Redux** (`Flux1Redux`) | ✅ | **Best fit for character system** |
+| Kontext (`Flux1Kontext`) | ✅ | In-context editing, character consistency via text instructions |
+| ControlNet (Canny) | ✅ | Edge-conditioned generation |
+| Depth conditioning | ✅ | Depth map from reference image |
+| Fill (inpaint/outpaint) | ✅ | Mask-based selective editing |
+| LoRA | ✅ | Multi-LoRA with scales |
+| IP-Adapter | ❌ | Not natively available in mflux |
+| InstantID | ❌ | PyTorch/CUDA only |
+| PhotoMaker | ❌ | PyTorch/CUDA only |
+| PuLID | ❌ | PyTorch/CUDA only |
+
+#### Redux — the chosen approach
+
+**What it does:** Redux is an adapter for FLUX.1 that enables image variation generation. It embeds reference images via a dedicated Redux encoder and joins them with T5 text encodings in the attention layers. Unlike image-to-image (which resumes denoising from the input), Redux operates on image embeddings — meaning you get new compositions influenced by the reference rather than edits of it.
+
+**Python API (confirmed in our install):**
+
+```python
+from mflux.models.flux.variants.redux.flux_redux import Flux1Redux
+
+model = Flux1Redux(quantize=8)
+image = model.generate_image(
+    seed=42,
+    prompt="A detective in a noir city at night",
+    redux_image_paths=["ref1.png", "ref2.png"],     # character reference images
+    redux_image_strengths=[0.7, 0.5],                # per-image influence
+    num_inference_steps=20,
+    height=1024,
+    width=1024,
+    guidance=4.0,
+)
+image.save("output.png")
+```
+
+**Key parameters:**
+- `redux_image_paths: list[Path | str]` — 1+ reference images (maps to character's reference_images)
+- `redux_image_strengths: list[float] | None` — per-image weight 0.0–1.0 (maps to characterStrength)
+- `guidance: float` — guidance scale (default 4.0)
+- All other params same as standard Flux1 generation
+
+**Model requirement:** Uses FLUX.1-dev base model + Redux encoder weights (~auto-downloaded on first use from HuggingFace). Our FLUX.1-dev-q8 model is already downloaded (54GB).
+
+**Tradeoffs vs the original plan:**
+- ✅ Works natively in mflux on Apple Silicon — no CUDA required
+- ✅ Supports multiple reference images with per-image strength
+- ✅ Clean Python API matches our pipeline pattern
+- ⚠️ Not face-specific like InstantID/PuLID — influence is holistic (style + content + identity)
+- ⚠️ Reference images can "bleed" style/content, not just identity
+- ⚠️ Requires FLUX.1-dev model (not schnell) — schnell users would need to download dev
+
+#### Kontext — alternative/complement
+
+**What it does:** Kontext is Black Forest Labs' official in-context editing model. Core capabilities include **character consistency** (preserving unique elements across scenes), local editing, and style reference. It operates by taking a reference image + text instruction to produce an edited variant.
+
+**Better for:** "Take this image of Alice and change the background to a moonlit forest" (editing)
+**Worse for:** "Generate a new scene featuring Alice" (new compositions from reference)
+
+**Potential complement:** Could use Redux for initial character-consistent generation, then Kontext for iterative refinement/editing of the result.
+
+### Decision
+
+**Use Redux as the primary character adapter.** It maps cleanly to our existing architecture:
+- Character's `reference_images[]` → `redux_image_paths`
+- Character's `characterStrength` → applied uniformly as `redux_image_strengths`  
+- Pipeline switches from `Flux1` to `Flux1Redux` when a character is selected
+- Falls back to standard `Flux1` when no character selected
+
+### Sources
+
+- mflux GitHub (feature list + API): https://github.com/filipstrand/mflux
+- mflux FLUX.1 README (Redux docs): https://github.com/filipstrand/mflux/blob/main/src/mflux/models/flux/README.md
+- XLabs-AI FLUX IP-Adapter (not used, ComfyUI-only): https://huggingface.co/XLabs-AI/flux-ip-adapter
+- InstantX FLUX IP-Adapter (not used, ComfyUI-only): https://comfyui-wiki.com/en/news/2024-11-22-instantx-flux-ipadapter-release
