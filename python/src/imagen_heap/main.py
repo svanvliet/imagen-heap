@@ -161,6 +161,7 @@ def create_server() -> RpcServer:
     def handle_download_model(params: dict) -> dict:
         """Download a model from HuggingFace."""
         model_id = params.get("model_id", "")
+        hf_token = params.get("hf_token", None)
         if not model_id:
             raise ValueError("model_id is required")
 
@@ -171,7 +172,15 @@ def create_server() -> RpcServer:
                 "total_bytes": total,
             })
 
-        return model_manager.download_model(model_id, progress_callback=on_download_progress)
+        return model_manager.download_model(model_id, progress_callback=on_download_progress, hf_token=hf_token)
+
+    def handle_save_hf_token(params: dict) -> dict:
+        """Save HuggingFace API token."""
+        token = params.get("token", "")
+        if not token:
+            raise ValueError("token is required")
+        model_manager.save_hf_token(token)
+        return {"success": True}
 
     def handle_delete_model(params: dict) -> dict:
         """Delete a downloaded model."""
@@ -192,6 +201,7 @@ def create_server() -> RpcServer:
     server.register("get_default_downloads", handle_get_default_downloads)
     server.register("is_first_run", handle_is_first_run)
     server.register("download_model", handle_download_model)
+    server.register("save_hf_token", handle_save_hf_token)
     server.register("delete_model", handle_delete_model)
     server.register("get_disk_usage", handle_get_disk_usage)
 

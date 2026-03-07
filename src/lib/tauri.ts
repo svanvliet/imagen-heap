@@ -92,3 +92,8 @@ export async function deleteModel(modelId: string): Promise<{ success: boolean; 
 export async function getDiskUsage(): Promise<{ used_bytes: number; model_count: number }> {
   return invoke("get_disk_usage");
 }
+
+/** Save HuggingFace API token */
+export async function saveHfToken(token: string): Promise<{ success: boolean }> {
+  return invoke("save_hf_token", { token });
+}

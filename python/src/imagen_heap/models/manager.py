@@ -109,11 +109,15 @@ class ModelManager:
         self,
         model_id: str,
         progress_callback: ProgressCallback | None = None,
+        hf_token: str | None = None,
     ) -> dict:
         """Download a model from HuggingFace.
 
         Uses huggingface_hub to download model files. mflux will find
         them in the HF cache when loading for inference.
+
+        Args:
+            hf_token: Optional HuggingFace API token for gated repos.
         """
         entry = get_model_by_id(model_id)
         if entry is None:
@@ -131,15 +135,17 @@ class ModelManager:
         try:
             from huggingface_hub import snapshot_download
 
-            # Download to the standard HF cache (mflux expects this)
+            # Use provided token, or fall back to saved token, or cached login
+            token = hf_token or self._load_hf_token()
+
             local_path = snapshot_download(
                 repo_id=entry.hf_repo_id,
                 repo_type="model",
+                token=token or None,
             )
 
             logger.info("Download complete: %s → %s", model_id, local_path)
 
-            # Report 100% progress
             if progress_callback:
                 progress_callback(model_id, entry.file_size_bytes, entry.file_size_bytes)
 
@@ -153,8 +159,32 @@ class ModelManager:
             return model.to_dict()
 
         except Exception as e:
+            error_str = str(e)
             logger.exception("HuggingFace download failed for %s", model_id)
+
+            # Provide a helpful error for gated repos
+            if "gated" in error_str.lower() or "401" in error_str:
+                raise RuntimeError(
+                    f"AUTH_REQUIRED: Model '{entry.name}' requires HuggingFace authentication. "
+                    f"Visit {entry.source_url} to accept the license, then enter your HF token."
+                ) from e
+
             raise RuntimeError(f"Download failed: {e}") from e
+
+    def save_hf_token(self, token: str) -> None:
+        """Save HuggingFace API token to disk."""
+        token_path = self.models_dir / ".hf_token"
+        token_path.write_text(token.strip())
+        logger.info("HuggingFace token saved")
+
+    def _load_hf_token(self) -> str | None:
+        """Load saved HuggingFace token, if any."""
+        token_path = self.models_dir / ".hf_token"
+        if token_path.exists():
+            token = token_path.read_text().strip()
+            if token:
+                return token
+        return None
 
     def _simulate_download(
         self,

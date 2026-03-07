@@ -267,6 +267,13 @@ fn get_disk_usage(state: State<SidecarState>) -> Result<serde_json::Value, Strin
     send_rpc(&state, "get_disk_usage", serde_json::json!({}))
 }
 
+/// Save HuggingFace API token
+#[tauri::command]
+fn save_hf_token(state: State<SidecarState>, token: String) -> Result<serde_json::Value, String> {
+    info!("Command: save_hf_token");
+    send_rpc(&state, "save_hf_token", serde_json::json!({"token": token}))
+}
+
 /// Start the Python sidecar process and set up the stdout reader thread
 fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, pending: Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>) -> Result<(Child, Box<dyn Write + Send>), String> {
     info!("Starting Python sidecar: {} {}", python_path, script_path);
@@ -460,6 +467,7 @@ pub fn run() {
             download_model,
             delete_model,
             get_disk_usage,
+            save_hf_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

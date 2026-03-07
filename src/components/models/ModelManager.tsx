@@ -1,6 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useModelStore, type ModelInfo, type DownloadProgress } from "@/stores/models";
 import { formatBytes, cn } from "@/lib/utils";
+import { saveHfToken } from "@/lib/tauri";
+import { createLogger } from "@/lib/logger";
 import {
   Download,
   Trash2,
@@ -10,7 +12,12 @@ import {
   AlertTriangle,
   HardDrive,
   X,
+  KeyRound,
+  ExternalLink,
+  AlertCircle,
 } from "lucide-react";
+
+const log = createLogger("ModelManager");
 
 interface ModelManagerProps {
   onClose: () => void;
@@ -27,10 +34,46 @@ export function ModelManager({ onClose }: ModelManagerProps) {
   const downloadModelAction = useModelStore((s) => s.downloadModel);
   const deleteModelAction = useModelStore((s) => s.deleteModel);
 
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
+  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [hfToken, setHfToken] = useState("");
+  const [savingToken, setSavingToken] = useState(false);
+
   useEffect(() => {
     loadModels();
     loadDiskUsage();
   }, [loadModels, loadDiskUsage]);
+
+  const handleDownload = async (modelId: string) => {
+    setDownloadErrors((prev) => { const next = { ...prev }; delete next[modelId]; return next; });
+    try {
+      await downloadModelAction(modelId);
+      loadDiskUsage();
+    } catch (err) {
+      const msg = String(err);
+      log.error("Download failed:", modelId, msg);
+      if (msg.includes("AUTH_REQUIRED")) {
+        setDownloadErrors((prev) => ({ ...prev, [modelId]: "auth_required" }));
+        setShowTokenInput(true);
+      } else {
+        setDownloadErrors((prev) => ({ ...prev, [modelId]: msg }));
+      }
+    }
+  };
+
+  const handleSaveToken = async () => {
+    if (!hfToken.trim()) return;
+    setSavingToken(true);
+    try {
+      await saveHfToken(hfToken.trim());
+      log.info("HF token saved");
+      setShowTokenInput(false);
+      setDownloadErrors({});
+    } catch (err) {
+      log.error("Failed to save token:", err);
+    }
+    setSavingToken(false);
+  };
 
   const licenseBadge = (license: string) => {
     const colors: Record<string, string> = {
@@ -64,6 +107,45 @@ export function ModelManager({ onClose }: ModelManagerProps) {
           </button>
         </div>
 
+        {/* HF Token input */}
+        {showTokenInput && (
+          <div className="mx-4 mt-4 bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <KeyRound size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-text-secondary">
+                <p className="font-medium text-text-primary mb-1">HuggingFace authentication required</p>
+                <p>
+                  Some models require you to accept their license and provide an API token.{" "}
+                  <a
+                    href="https://huggingface.co/settings/tokens"
+                    target="_blank"
+                    rel="noopener"
+                    className="text-accent hover:underline inline-flex items-center gap-0.5"
+                  >
+                    Get your token <ExternalLink size={10} />
+                  </a>
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={hfToken}
+                onChange={(e) => setHfToken(e.target.value)}
+                placeholder="hf_..."
+                className="flex-1 px-3 py-1.5 bg-bg-primary border border-border-default rounded-md text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <button
+                onClick={handleSaveToken}
+                disabled={!hfToken.trim() || savingToken}
+                className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
+              >
+                {savingToken ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Model list */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {isLoading ? (
@@ -77,7 +159,8 @@ export function ModelManager({ onClose }: ModelManagerProps) {
                 model={model}
                 isDownloading={downloadingModels.has(model.id)}
                 progress={downloadProgress.get(model.id)}
-                onDownload={() => downloadModelAction(model.id)}
+                error={downloadErrors[model.id]}
+                onDownload={() => handleDownload(model.id)}
                 onDelete={() => deleteModelAction(model.id)}
                 licenseBadgeClass={licenseBadge(model.license_spdx)}
               />
@@ -93,6 +176,7 @@ function ModelCard({
   model,
   isDownloading,
   progress,
+  error,
   onDownload,
   onDelete,
   licenseBadgeClass,
@@ -100,6 +184,7 @@ function ModelCard({
   model: ModelInfo;
   isDownloading: boolean;
   progress?: DownloadProgress;
+  error?: string;
   onDownload: () => void;
   onDelete: () => void;
   licenseBadgeClass: string;
@@ -141,6 +226,17 @@ function ModelCard({
             <span>·</span>
             <span>Min {formatBytes(model.min_memory_mb * 1024 * 1024)} RAM</span>
           </div>
+          {/* Error display */}
+          {error && error !== "auth_required" && (
+            <p className="text-[10px] text-red-400 mt-1.5 flex items-center gap-1">
+              <AlertCircle size={10} /> {error}
+            </p>
+          )}
+          {error === "auth_required" && (
+            <p className="text-[10px] text-amber-400 mt-1.5 flex items-center gap-1">
+              <KeyRound size={10} /> Requires HuggingFace authentication — enter your token above
+            </p>
+          )}
         </div>
 
         <div className="flex-shrink-0">
@@ -180,10 +276,18 @@ function ModelCard({
           ) : (
             <button
               onClick={onDownload}
-              className="px-3 py-1.5 rounded-md bg-accent hover:bg-accent-hover text-white text-xs font-medium transition-colors flex items-center gap-1.5"
+              className={cn(
+                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5",
+                error
+                  ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20"
+                  : "bg-accent hover:bg-accent-hover text-white",
+              )}
             >
-              <Download size={12} />
-              Download
+              {error ? (
+                <><AlertCircle size={12} /> Retry</>
+              ) : (
+                <><Download size={12} /> Download</>
+              )}
             </button>
           )}
         </div>
