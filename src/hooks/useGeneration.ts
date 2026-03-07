@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useGenerationStore } from "@/stores/generation";
 import { useModelStore } from "@/stores/models";
 import { useBackendStore } from "@/stores/backend";
+import { usePromptHistoryStore } from "@/stores/promptHistory";
 import { generateImage } from "@/lib/tauri";
 import { randomSeed } from "@/lib/utils";
 
@@ -69,6 +70,9 @@ export function useGeneration() {
       });
 
       console.log("[useGeneration] Generation complete:", result);
+
+      // Save to prompt history
+      usePromptHistoryStore.getState().addEntry(state.prompt, state.stylePresetId);
 
       setCurrentImage({
         id: result.id,
