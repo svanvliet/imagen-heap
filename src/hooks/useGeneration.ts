@@ -20,6 +20,7 @@ export function useGeneration() {
   const setGenerating = useGenerationStore((s) => s.setGenerating);
   const setProgress = useGenerationStore((s) => s.setProgress);
   const setCurrentImage = useGenerationStore((s) => s.setCurrentImage);
+  const setGenerationError = useGenerationStore((s) => s.setGenerationError);
   const backendStatus = useBackendStore((s) => s.status);
   const selectedModelId = useModelStore((s) => s.selectedModelId);
 
@@ -92,10 +93,9 @@ export function useGeneration() {
       });
     } catch (err) {
       console.error("[useGeneration] Generation failed:", err);
-      setGenerating(false);
-      setProgress(null);
+      setGenerationError(String(err));
     }
-  }, [setGenerating, setProgress, setCurrentImage]);
+  }, [setGenerating, setProgress, setCurrentImage, setGenerationError]);
 
   return {
     generate,

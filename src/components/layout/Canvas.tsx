@@ -1,6 +1,6 @@
 import { useGenerationStore } from "@/stores/generation";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2 } from "lucide-react";
+import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
@@ -21,6 +21,7 @@ export function Canvas() {
   const currentImage = useGenerationStore((s) => s.currentImage);
   const isGenerating = useGenerationStore((s) => s.isGenerating);
   const progress = useGenerationStore((s) => s.progress);
+  const generationError = useGenerationStore((s) => s.generationError);
   const setGenerating = useGenerationStore((s) => s.setGenerating);
   const setProgress = useGenerationStore((s) => s.setProgress);
 
@@ -215,6 +216,19 @@ export function Canvas() {
               <Maximize2 size={10} />
               {currentImage.config.width}×{currentImage.config.height}
             </span>
+          </div>
+        </div>
+      ) : generationError ? (
+        /* Generation error */
+        <div className="flex flex-col items-center gap-3 text-center animate-fade-in max-w-md">
+          <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center">
+            <AlertCircle size={24} className="text-red-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-text-primary">Generation failed</p>
+            <p className="text-xs text-text-muted mt-1 break-words">
+              {generationError.replace(/^RPC error: /, "")}
+            </p>
           </div>
         </div>
       ) : (

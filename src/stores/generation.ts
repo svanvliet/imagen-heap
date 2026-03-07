@@ -15,6 +15,7 @@ interface GenerationState {
   isGenerating: boolean;
   progress: GenerationProgress | null;
   generationStartTime: number | null;
+  generationError: string | null;
   currentImage: GenerationResult | null;
   history: GenerationResult[];
 
@@ -29,6 +30,7 @@ interface GenerationState {
   randomizeSeed: () => void;
   setGenerating: (isGenerating: boolean) => void;
   setProgress: (progress: GenerationProgress | null) => void;
+  setGenerationError: (error: string | null) => void;
   setCurrentImage: (result: GenerationResult) => void;
   selectHistoryItem: (index: number) => void;
   clearHistory: () => void;
@@ -59,6 +61,7 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
   isGenerating: false,
   progress: null,
   generationStartTime: null,
+  generationError: null,
   currentImage: null,
   history: [],
 
@@ -78,8 +81,9 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
   setCfg: (cfg) => set({ cfg, qualityProfile: "custom" }),
   randomizeSeed: () => set({ seed: randomSeed() }),
   setGenerating: (isGenerating) =>
-    set({ isGenerating, generationStartTime: isGenerating ? Date.now() : null }),
+    set({ isGenerating, generationStartTime: isGenerating ? Date.now() : null, generationError: null }),
   setProgress: (progress) => set({ progress }),
+  setGenerationError: (error) => set({ generationError: error, isGenerating: false, progress: null, generationStartTime: null }),
   setCurrentImage: (result) =>
     set((s) => ({
       currentImage: result,

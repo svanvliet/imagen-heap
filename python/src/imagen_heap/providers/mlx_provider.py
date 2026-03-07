@@ -49,7 +49,7 @@ class MLXProvider(RuntimeProvider):
         start = time.time()
 
         try:
-            from mflux.models.flux.flux1 import Flux1
+            from mflux.models.flux.variants.txt2img.flux import Flux1
             from mflux.models.common.config.model_config import ModelConfig
 
             if entry and entry.is_mflux_saved:
@@ -153,9 +153,19 @@ class MLXProvider(RuntimeProvider):
 
             if hasattr(self._flux, 'callback_registry') and isinstance(self._flux.callback_registry, CallbackRegistry):
                 self._flux.callback_registry.register(ProgressReporter())
-                logger.debug("Progress callback registered")
+                logger.debug("Progress callback registered via callback_registry")
+            elif hasattr(self._flux, 'callbacks') and isinstance(self._flux.callbacks, CallbackRegistry):
+                self._flux.callbacks.register(ProgressReporter())
+                logger.debug("Progress callback registered via callbacks")
             else:
-                logger.debug("No callback_registry found on model, progress will not stream")
+                # Look for any CallbackRegistry attribute
+                for attr_name in dir(self._flux):
+                    attr = getattr(self._flux, attr_name, None)
+                    if isinstance(attr, CallbackRegistry):
+                        attr.register(ProgressReporter())
+                        logger.debug("Progress callback registered via %s", attr_name)
+                        return
+                logger.debug("No CallbackRegistry found on model, progress will not stream")
         except Exception:
             logger.debug("Could not register progress callback", exc_info=True)
 
