@@ -12,6 +12,7 @@ import logging.handlers
 import os
 import platform
 import sys
+import threading
 from pathlib import Path
 
 from imagen_heap import __version__
@@ -47,17 +48,21 @@ root_logger.addHandler(file_handler)
 
 logger = logging.getLogger("imagen_heap")
 
+# Shared write lock for stdout — used by RPC server and notifications
+_stdout_lock = threading.Lock()
+
 
 def _send_notification(method: str, params: dict) -> None:
-    """Send a JSON-RPC notification (no id) to stdout."""
+    """Send a JSON-RPC notification (no id) to stdout (thread-safe)."""
     msg = json.dumps({"jsonrpc": "2.0", "method": method, "params": params})
-    sys.stdout.write(msg + "\n")
-    sys.stdout.flush()
+    with _stdout_lock:
+        sys.stdout.write(msg + "\n")
+        sys.stdout.flush()
 
 
 def create_server() -> RpcServer:
     """Create and configure the RPC server with all handlers."""
-    server = RpcServer()
+    server = RpcServer(write_lock=_stdout_lock)
 
     # Auto-select provider: MLX if available, StubProvider fallback
     try:
@@ -214,7 +219,7 @@ def create_server() -> RpcServer:
     server.register("ping", handle_ping)
     server.register("get_device_info", handle_get_device_info)
     server.register("get_memory_status", handle_get_memory_status)
-    server.register("generate", handle_generate)
+    server.register("generate", handle_generate, background=True)
     server.register("get_models", handle_get_models)
     server.register("get_downloaded_models", handle_get_downloaded_models)
     server.register("get_default_downloads", handle_get_default_downloads)
@@ -222,7 +227,7 @@ def create_server() -> RpcServer:
     server.register("mark_wizard_done", handle_mark_wizard_done)
     server.register("reset_wizard", handle_reset_wizard)
     server.register("get_model_path", handle_get_model_path)
-    server.register("download_model", handle_download_model)
+    server.register("download_model", handle_download_model, background=True)
     server.register("save_hf_token", handle_save_hf_token)
     server.register("delete_model", handle_delete_model)
     server.register("get_disk_usage", handle_get_disk_usage)
