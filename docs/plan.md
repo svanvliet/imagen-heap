@@ -389,14 +389,86 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 - Auto-load the default model on first generation (if downloaded)
 - Model switching: unload current → load requested
 
-**2b.5 — Integration verification** 🚧
-- Test full flow: download model → generate image → view on canvas
-- Verify progress streaming works with real inference (step-by-step updates)
-- Verify memory reporting is accurate
-- Test with both schnell (4 steps, ~10s) and dev (25 steps, ~60s) if available
-- Confirm stub fallback still works when mflux is absent
+**2b.5 — Model selection UI** 🚧
+> *Gap identified: models can be downloaded but there's no way to choose which one to generate with.*
+- **Zustand state:** Add `selectedModelId` to `useModelStore` (persisted to catalog); default to first downloaded model
+- **Sidebar model selector:** Compact dropdown above the Generate button showing downloaded models
+  - Each option: model name + quantization badge + size indicator
+  - Disabled state with "No models downloaded" message + link to open Model Manager
+  - When quality toggle (Fast/Quality) changes, auto-select the best matching downloaded model (schnell for Fast, dev for Quality) — but user can always override
+  - If user manually selects a model, quality toggle shows "Custom" state
+- **Model Manager: "Use for Generation" button** on downloaded model cards
+  - Sets `selectedModelId` and closes the Model Manager modal
+  - Visual indicator on the currently-active model card (e.g., radio dot or "Active" badge)
+- **Status bar:** Active model name shown (already partially wired via `loadedModel`, but needs to reflect the *selected* model, not just what's loaded in memory)
+- **Generation store integration:** `useGeneration.generate()` reads `selectedModelId` from model store instead of deriving from quality profile
 
-**Deliverable:** User downloads a real FLUX model (~6 GB), types a prompt, clicks Generate, and sees an actual AI-generated image on the canvas within ~10 seconds (schnell) or ~60 seconds (dev). Progress bar shows real step progress. The app falls back to StubProvider gracefully if MLX hardware is unavailable.
+**2b.6 — Advanced generation parameters**
+> *Gap identified: steps, CFG, seed, negative prompt, and sampler are all hardcoded with no user control.*
+- **Expandable "Advanced" accordion** in sidebar, below the quality toggle / aspect ratio selector:
+  - Collapsed by default in Simple Mode; remembers open/closed state
+  - Smooth expand/collapse animation (Radix Collapsible or similar)
+- **Parameters exposed:**
+  - **Steps** — Slider (1–50), default from quality profile (4 for Fast, 25 for Quality)
+  - **Guidance scale (CFG)** — Slider (1.0–20.0, step 0.5), default 3.5
+  - **Seed** — Numeric input + 🎲 Randomize button + 📋 Copy button; displays the seed used in last generation; lock/unlock toggle to reuse seed across generations
+  - **Negative prompt** — Secondary textarea (smaller, muted styling), placeholder: "Things to avoid..."
+- When quality profile changes → params reset to profile defaults
+- When user manually adjusts any param → quality toggle shows "Custom" indicator
+- All param values flow into the `generate()` call (replace hardcoded values in `useGeneration.ts`)
+
+**2b.7 — Canvas generation experience (live preview)**
+> *Gap identified: backend streams `previewBase64` per step but the canvas ignores it. No visual delight during generation.*
+- **Live step preview:** Render `previewBase64` on the canvas as each denoising step completes
+  - Image progressively sharpens from noise → final result
+  - Smooth crossfade transition between steps (CSS `transition: opacity 300ms`)
+  - Subtle "generating" border glow or pulse on the canvas frame
+- **Generation overlay on canvas:**
+  - Semi-transparent info pill: "Step 3/25 · 12.4s elapsed"
+  - Miniature progress bar below the pill
+  - Cancel button (✕) in the overlay to abort generation
+- **Completion transition:**
+  - Final image fades in from last preview (no jarring swap)
+  - Brief "sparkle" or subtle scale animation on completion
+  - Generation metadata appears below canvas: seed (click to copy) · time · dimensions
+
+**2b.8 — Generation progress in status bar**
+> *Gap identified: status bar shows download progress but nothing during generation.*
+- Add generation status indicator to `StatusBar.tsx`:
+  - "Generating: Step X/Y" with inline mini progress bar
+  - Elapsed time counter (updates every second)
+  - Shows model name being used
+- Indicator appears alongside (not replacing) the download indicator
+- Click the generation indicator to scroll/focus the canvas (if user scrolled away)
+
+**2b.9 — Image export & save**
+> *Gap identified: images auto-save to `~/.imagen-heap/outputs/` but user has no way to export from the UI.*
+- **Canvas toolbar actions** (subtle icon bar above or below the canvas):
+  - 💾 **Save As…** — Native file dialog, defaults to `~/Downloads/{prompt_slug}_{seed}.png`
+  - 📋 **Copy to Clipboard** — Copies image data to system clipboard with toast confirmation
+  - 📂 **Reveal in Finder** — Opens the output directory with the file selected
+  - 🔗 **Share** *(optional/deferred)* — macOS share sheet
+- **Right-click context menu** on the canvas image:
+  - Save As…
+  - Copy to Clipboard
+  - Copy Prompt
+  - Copy Seed
+  - Reveal in Finder
+  - Image Info (opens metadata overlay)
+- **Filmstrip context menu:** Same options on right-click of any thumbnail
+
+**2b.10 — Integration verification**
+- Test full end-to-end flow with all new UI elements:
+  - Select a model from the dropdown → generate → see live preview steps → view final image
+  - Switch models mid-session (schnell → dev) and verify model loading
+  - Adjust advanced params (steps, CFG, seed lock) and verify they take effect
+  - Save image via toolbar button and via right-click context menu
+  - Verify status bar shows generation progress alongside download progress
+  - Test with both schnell (~10s, 4 steps) and dev (~60s, 25 steps)
+  - Verify memory reporting is accurate
+  - Confirm stub fallback still works when mflux is absent
+
+**Deliverable:** User selects a downloaded model, types a prompt, optionally tweaks advanced params, clicks Generate, and watches the image form step-by-step on the canvas. Progress shows in both the canvas overlay and the status bar. Final image can be saved, copied, or revealed in Finder. The app handles model switching, seed locking, and parameter customization.
 
 ---
 
@@ -439,6 +511,7 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 - ~~Disk budget bar chart~~ *(deferred to M9 polish)*
 - ~~Import custom model~~ *(deferred to M7 Community Hub)*
 - ~~Commercial-safe filter toggle~~ *(deferred to M7)*
+- ~~Model selection for generation~~ *(gap identified — added as M2b.5: model selector dropdown in sidebar + "Use" button on model cards)*
 
 **3.4 — Quantization selection** (partial)
 - Registry has Q4/Q8 variants per model
