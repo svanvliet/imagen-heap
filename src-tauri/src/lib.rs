@@ -390,8 +390,10 @@ pub fn run() {
             // Find the Python sidecar script
             let cwd = std::env::current_dir().unwrap_or_default();
             let script_candidates = vec![
-                // Dev mode: relative to CWD
+                // Dev mode: CWD is project root
                 cwd.join("python/src/imagen_heap/main.py"),
+                // Dev mode: CWD is src-tauri/ (npx tauri dev)
+                cwd.join("../python/src/imagen_heap/main.py"),
                 // Bundled: in resource directory
                 resource_dir.join("python/src/imagen_heap/main.py"),
             ];
