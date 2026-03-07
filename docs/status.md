@@ -72,6 +72,15 @@
   - useDownloadProgress hook wired into App.tsx
   - Tests: 34 Python + 16 frontend — all passing
   - Tauri build: successful
+- **07:10** — Fixed HF gated repo + wizard UX:
+  - Added HuggingFace token save/load in Python ModelManager (stored at ~/.imagen-heap/models/.hf_token)
+  - Added save_hf_token RPC handler + Rust command + TypeScript wrapper
+  - Catch GatedRepoError: returns AUTH_REQUIRED prefix for clear UI messaging
+  - **FirstRunWizard overhaul**: per-model download buttons, "Skip for now" / "Continue anyway" options, HF token input panel, download progress bars, error display with retry
+  - **ModelManager overhaul**: error handling with auth detection, HF token input, retry button with amber styling
+  - No longer auto-advances wizard on download failure
+  - Tests: 34 Python + 16 frontend — all passing
+  - Rust build: successful
 
 ### Commits
 | Hash | Milestone | Description |
@@ -85,3 +94,5 @@
 | `7b2f5d5` | — | fix: RPC error check treating null as error |
 | `725d89c` | — | fix: Python sidecar not found when CWD is src-tauri/ |
 | `1c79df3` | M2b | docs: add M2b (real inference) to plan, migrate data paths |
+| `5e452ab` | M2b | feat(m2b): real inference — MLXProvider, HuggingFace downloads, download progress UI |
+| `86570b2` | M2b | fix: HF auth handling, wizard UX overhaul, per-model downloads |
