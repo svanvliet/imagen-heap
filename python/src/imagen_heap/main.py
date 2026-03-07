@@ -3,14 +3,16 @@
 This process communicates with the Tauri frontend via JSON-RPC 2.0 over stdio.
 - stdin:  receives JSON-RPC requests (one per line)
 - stdout: sends JSON-RPC responses (one per line)
-- stderr: reserved for logging
+- stderr: reserved for logging (captured by Rust host)
 """
 
 import json
 import logging
+import logging.handlers
 import os
 import platform
 import sys
+from pathlib import Path
 
 from imagen_heap import __version__
 from imagen_heap.rpc.server import RpcServer
@@ -18,13 +20,31 @@ from imagen_heap.providers import StubProvider
 from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig
 from imagen_heap.models.manager import ModelManager
 
-# Configure logging to stderr (stdout is reserved for RPC)
-logging.basicConfig(
-    stream=sys.stderr,
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
+# --- Logging setup ---
+# Logs go to both stderr (captured by Rust) and ~/.imagen-heap/logs/python.log
+LOG_DIR = Path.home() / ".imagen-heap" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "python.log"
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+
+# stderr handler (captured by Rust host)
+stderr_handler = logging.StreamHandler(sys.stderr)
+stderr_handler.setLevel(logging.DEBUG)
+stderr_handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT))
+root_logger.addHandler(stderr_handler)
+
+# File handler with rotation (5 MB, keep 2 backups)
+file_handler = logging.handlers.RotatingFileHandler(
+    LOG_FILE, maxBytes=5_000_000, backupCount=2, encoding="utf-8",
 )
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT))
+root_logger.addHandler(file_handler)
+
 logger = logging.getLogger("imagen_heap")
 
 
@@ -164,8 +184,10 @@ def create_server() -> RpcServer:
 
 
 def main() -> None:
-    logger.info("Imagen Heap Python sidecar v%s starting", __version__)
+    logger.info("=== Imagen Heap Python sidecar v%s starting ===", __version__)
     logger.info("Python %s on %s", platform.python_version(), platform.platform())
+    logger.info("Log file: %s", LOG_FILE)
+    logger.info("PID: %d", os.getpid())
 
     server = create_server()
     try:

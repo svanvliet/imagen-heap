@@ -1,5 +1,8 @@
 import { create } from "zustand";
 import { getModels, isFirstRun, downloadModel, deleteModel, getDiskUsage } from "@/lib/tauri";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("ModelStore");
 
 export interface ModelInfo {
   id: string;
@@ -43,9 +46,10 @@ export const useModelStore = create<ModelState>((set, get) => ({
     set({ isLoading: true });
     try {
       const models = await getModels();
+      log.info("Loaded %d models", (models as ModelInfo[]).length);
       set({ models: models as ModelInfo[], isLoading: false });
     } catch (err) {
-      console.error("[ModelStore] Failed to load models:", err);
+      log.error("Failed to load models:", err);
       set({ isLoading: false });
     }
   },
@@ -53,11 +57,11 @@ export const useModelStore = create<ModelState>((set, get) => ({
   checkFirstRun: async () => {
     try {
       const result = await isFirstRun();
-      console.log("[ModelStore] is_first_run result:", result);
+      log.info("is_first_run result:", result);
       set({ isFirstRun: result.is_first_run });
       return result.is_first_run;
     } catch (err) {
-      console.error("[ModelStore] Failed to check first run:", err);
+      log.error("Failed to check first run:", err);
       // Default to showing wizard on error so user isn't stuck
       set({ isFirstRun: true });
       return true;
@@ -65,10 +69,12 @@ export const useModelStore = create<ModelState>((set, get) => ({
   },
 
   downloadModel: async (modelId: string) => {
+    log.info("Downloading model:", modelId);
     const current = get().downloadingModels;
     set({ downloadingModels: new Set([...current, modelId]) });
     try {
       await downloadModel(modelId);
+      log.info("Download complete:", modelId);
       const newDownloading = new Set(get().downloadingModels);
       newDownloading.delete(modelId);
       set({ downloadingModels: newDownloading });
@@ -76,7 +82,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
       await get().loadModels();
       await get().loadDiskUsage();
     } catch (err) {
-      console.error("[ModelStore] Download failed:", err);
+      log.error("Download failed:", modelId, err);
       const newDownloading = new Set(get().downloadingModels);
       newDownloading.delete(modelId);
       set({ downloadingModels: newDownloading });
@@ -84,21 +90,24 @@ export const useModelStore = create<ModelState>((set, get) => ({
   },
 
   deleteModel: async (modelId: string) => {
+    log.info("Deleting model:", modelId);
     try {
       await deleteModel(modelId);
+      log.info("Delete complete:", modelId);
       await get().loadModels();
       await get().loadDiskUsage();
     } catch (err) {
-      console.error("[ModelStore] Delete failed:", err);
+      log.error("Delete failed:", modelId, err);
     }
   },
 
   loadDiskUsage: async () => {
     try {
       const usage = await getDiskUsage();
+      log.debug("Disk usage:", usage);
       set({ diskUsage: usage });
     } catch (err) {
-      console.error("[ModelStore] Failed to load disk usage:", err);
+      log.error("Failed to load disk usage:", err);
     }
   },
 }));

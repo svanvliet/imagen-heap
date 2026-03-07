@@ -4,6 +4,9 @@ import { FirstRunWizard } from "@/components/models/FirstRunWizard";
 import { useBackendStatus } from "@/hooks/useBackendStatus";
 import { useModelStore } from "@/stores/models";
 import { useBackendStore } from "@/stores/backend";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("App");
 
 export default function App() {
   useBackendStatus();
@@ -14,11 +17,11 @@ export default function App() {
 
   // Check first run after backend connects
   useEffect(() => {
-    console.log("[App] Backend status changed:", backendStatus);
+    log.info("Backend status changed:", backendStatus);
     if (backendStatus === "connected") {
-      console.log("[App] Backend connected, checking first run...");
+      log.info("Backend connected, checking first run...");
       checkFirstRun().then((first) => {
-        console.log("[App] First run check result:", first);
+        log.info("First run check result:", first);
         if (first) setShowWizard(true);
       });
     }

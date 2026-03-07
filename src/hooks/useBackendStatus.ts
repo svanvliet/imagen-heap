@@ -2,10 +2,13 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useBackendStore } from "@/stores/backend";
 import { pingBackend } from "@/lib/tauri";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("BackendStatus");
 
 /**
  * Hook that manages backend connection status.
- * Pings the backend on mount and listens for status events.
+ * Pings the backend on mount with retries and listens for status events.
  */
 export function useBackendStatus() {
   const setStatus = useBackendStore((s) => s.setStatus);
@@ -16,7 +19,7 @@ export function useBackendStatus() {
   useEffect(() => {
     // Listen for status events from the Rust backend
     const unlisten = listen<string>("backend:status", (event) => {
-      console.log("[useBackendStatus] Status event:", event.payload);
+      log.info("Status event:", event.payload);
       if (event.payload === "connected") {
         setStatus("connected");
       } else if (event.payload === "error") {
@@ -33,18 +36,20 @@ export function useBackendStatus() {
     const tryPing = async (attempt: number) => {
       if (cancelled) return;
       const delay = attempt === 0 ? 500 : 1500;
+      log.debug(`Ping attempt ${attempt} — waiting ${delay}ms`);
       await new Promise((r) => setTimeout(r, delay));
       if (cancelled) return;
 
       try {
         const result = await pingBackend();
-        console.log("[useBackendStatus] Ping result (attempt %d):", attempt, result);
+        log.info(`Ping succeeded (attempt ${attempt}):`, result);
         setVersion(result.version);
       } catch (err) {
-        console.warn("[useBackendStatus] Ping failed (attempt %d):", attempt, err);
+        log.warn(`Ping failed (attempt ${attempt}):`, err);
         if (attempt < 3 && !cancelled) {
           tryPing(attempt + 1);
         } else {
+          log.error("All ping attempts exhausted, backend unreachable");
           setError(String(err));
         }
       }
