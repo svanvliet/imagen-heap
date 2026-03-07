@@ -45,19 +45,46 @@ class ModelManager:
         logger.info("ModelManager initialized, models_dir=%s, %d models downloaded",
                      self.models_dir, len(self._catalog))
 
+    def _validate_local_path(self, local_path: str) -> bool:
+        """Check that a downloaded model's local path actually contains model files."""
+        if not local_path or not os.path.exists(local_path):
+            return False
+        if os.path.isdir(local_path):
+            # HF snapshot dirs use symlinks to blobs — verify at least one
+            # .safetensors or .bin file exists (following symlinks)
+            for dirpath, _dirs, files in os.walk(local_path, followlinks=True):
+                for f in files:
+                    if f.endswith((".safetensors", ".bin", ".gguf")):
+                        fp = os.path.join(dirpath, f)
+                        if os.path.isfile(fp) and os.path.getsize(fp) > 0:
+                            return True
+            # Directory exists but has no model weights
+            logger.warning("Model path exists but contains no weight files: %s", local_path)
+            return False
+        # Single file
+        return os.path.isfile(local_path) and os.path.getsize(local_path) > 0
+
     def _load_catalog(self) -> None:
-        """Load the catalog of downloaded models from disk."""
+        """Load the catalog of downloaded models from disk, pruning stale entries."""
         if self._catalog_path.exists():
+            pruned = False
             try:
                 data = json.loads(self._catalog_path.read_text())
                 for item in data:
                     entry = get_model_by_id(item["id"])
-                    if entry and os.path.exists(item.get("local_path", "")):
+                    local_path = item.get("local_path", "")
+                    if entry and self._validate_local_path(local_path):
                         self._catalog[entry.id] = DownloadedModel(
                             entry=entry,
-                            local_path=item["local_path"],
+                            local_path=local_path,
                             downloaded_at=item.get("downloaded_at", ""),
                         )
+                    elif entry:
+                        logger.warning("Pruning stale catalog entry: %s (path missing or empty: %s)",
+                                       item["id"], local_path)
+                        pruned = True
+                if pruned:
+                    self._save_catalog()
             except Exception as e:
                 logger.warning("Failed to load catalog: %s", e)
 
@@ -242,35 +269,63 @@ class ModelManager:
         return model.to_dict()
 
     def delete_model(self, model_id: str) -> bool:
-        """Delete a downloaded model."""
+        """Delete a downloaded model and clean up its HF cache."""
         if model_id not in self._catalog:
             return False
 
         model = self._catalog[model_id]
+        local_path = model.local_path
         try:
-            if os.path.exists(model.local_path):
-                os.remove(model.local_path)
+            if os.path.exists(local_path):
+                if os.path.isdir(local_path):
+                    # For HF cache: the snapshot dir is under
+                    # ~/.cache/huggingface/hub/models--org--name/snapshots/rev/
+                    # Removing the entire model repo dir cleans blobs too
+                    hf_model_dir = self._find_hf_model_dir(local_path)
+                    if hf_model_dir and os.path.isdir(hf_model_dir):
+                        logger.info("Removing HF cache dir: %s", hf_model_dir)
+                        shutil.rmtree(hf_model_dir, ignore_errors=True)
+                    else:
+                        shutil.rmtree(local_path, ignore_errors=True)
+                else:
+                    os.remove(local_path)
         except OSError as e:
-            logger.warning("Failed to delete model file: %s", e)
+            logger.warning("Failed to delete model files: %s", e)
 
         del self._catalog[model_id]
         self._save_catalog()
         logger.info("Deleted model: %s", model_id)
         return True
 
+    @staticmethod
+    def _find_hf_model_dir(snapshot_path: str) -> str | None:
+        """Given a snapshot path like .../models--org--name/snapshots/rev, return the models--org--name dir."""
+        parts = Path(snapshot_path).parts
+        for i, part in enumerate(parts):
+            if part.startswith("models--"):
+                return str(Path(*parts[: i + 1]))
+        return None
+
     def get_disk_usage(self) -> dict:
-        """Return total disk usage of downloaded models."""
+        """Return total disk usage of downloaded models (follows symlinks)."""
         total = 0
+        seen_inodes: set[tuple[int, int]] = set()
         for model in self._catalog.values():
             path = model.local_path
             if os.path.isdir(path):
-                for dirpath, _dirnames, filenames in os.walk(path):
+                for dirpath, _dirnames, filenames in os.walk(path, followlinks=True):
                     for f in filenames:
                         fp = os.path.join(dirpath, f)
-                        if os.path.exists(fp):
-                            total += os.path.getsize(fp)
+                        try:
+                            stat = os.stat(fp)  # follows symlinks
+                            inode_key = (stat.st_dev, stat.st_ino)
+                            if inode_key not in seen_inodes:
+                                seen_inodes.add(inode_key)
+                                total += stat.st_size
+                        except OSError:
+                            pass
             elif os.path.isfile(path):
-                total += os.path.getsize(path)
+                total += os.stat(path).st_size
         return {
             "used_bytes": total,
             "model_count": len(self._catalog),

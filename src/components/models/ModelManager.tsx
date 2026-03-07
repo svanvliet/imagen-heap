@@ -38,6 +38,16 @@ export function ModelManager({ onClose }: ModelManagerProps) {
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [hfToken, setHfToken] = useState("");
   const [savingToken, setSavingToken] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const handleDelete = async (modelId: string) => {
+    if (confirmDelete !== modelId) {
+      setConfirmDelete(modelId);
+      return;
+    }
+    setConfirmDelete(null);
+    await deleteModelAction(modelId);
+  };
 
   useEffect(() => {
     loadModels();
@@ -155,7 +165,9 @@ export function ModelManager({ onClose }: ModelManagerProps) {
                 progress={downloadProgress.get(model.id)}
                 error={downloadErrors.get(model.id)}
                 onDownload={() => handleDownload(model.id)}
-                onDelete={() => deleteModelAction(model.id)}
+                onDelete={() => handleDelete(model.id)}
+                confirmingDelete={confirmDelete === model.id}
+                onCancelDelete={() => setConfirmDelete(null)}
                 licenseBadgeClass={licenseBadge(model.license_spdx)}
               />
             ))
@@ -173,6 +185,8 @@ function ModelCard({
   error,
   onDownload,
   onDelete,
+  confirmingDelete,
+  onCancelDelete,
   licenseBadgeClass,
 }: {
   model: ModelInfo;
@@ -181,6 +195,8 @@ function ModelCard({
   error?: string;
   onDownload: () => void;
   onDelete: () => void;
+  confirmingDelete: boolean;
+  onCancelDelete: () => void;
   licenseBadgeClass: string;
 }) {
   const isDownloaded = model.status === "downloaded";
@@ -261,16 +277,35 @@ function ModelCard({
             </div>
           ) : isDownloaded ? (
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-success font-medium mr-1">
-                <Check size={12} className="inline" /> Installed
-              </span>
-              <button
-                onClick={onDelete}
-                className="p-1.5 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
-                title="Delete model"
-              >
-                <Trash2 size={14} />
-              </button>
+              {confirmingDelete ? (
+                <>
+                  <button
+                    onClick={onDelete}
+                    className="px-2 py-1 rounded-md bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-medium transition-colors"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={onCancelDelete}
+                    className="px-2 py-1 rounded-md hover:bg-bg-hover text-text-muted text-[10px] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-[10px] text-success font-medium mr-1">
+                    <Check size={12} className="inline" /> Installed
+                  </span>
+                  <button
+                    onClick={onDelete}
+                    className="p-1.5 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
+                    title="Delete model"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <button

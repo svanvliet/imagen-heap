@@ -101,3 +101,17 @@ class TestModelManager:
         defaults = self.manager.get_default_download_list()
         assert len(defaults) >= 1
         assert all("already_downloaded" in d for d in defaults)
+
+    def test_catalog_prunes_missing_paths(self):
+        """Catalog entries with missing/empty local_path are pruned on load."""
+        self.manager._simulate_download("flux-schnell-q8")
+        assert len(self.manager.get_downloaded_models()) == 1
+        # Corrupt the catalog to point at a nonexistent path
+        catalog_path = self.manager._catalog_path
+        import json
+        data = json.loads(catalog_path.read_text())
+        data[0]["local_path"] = "/nonexistent/path"
+        catalog_path.write_text(json.dumps(data))
+        # Reload — should prune the stale entry
+        manager2 = ModelManager(self.tmp_dir)
+        assert len(manager2.get_downloaded_models()) == 0
