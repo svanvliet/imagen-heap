@@ -28,3 +28,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
+
+# Tauri build output
+src-tauri/target/
