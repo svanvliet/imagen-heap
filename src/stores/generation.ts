@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { GenerationResult, GenerationProgress } from "@/types";
 import { ASPECT_RATIOS, QUALITY_PROFILES, STYLE_PRESETS } from "@/lib/constants";
 import { randomSeed } from "@/lib/utils";
@@ -53,7 +54,9 @@ interface GenerationState {
   };
 }
 
-export const useGenerationStore = create<GenerationState>((set, get) => ({
+export const useGenerationStore = create<GenerationState>()(
+  persist(
+    (set, get) => ({
   prompt: "",
   negativePrompt: "",
   qualityProfile: "fast",
@@ -151,4 +154,13 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
       cfg: s.cfg,
     };
   },
-}));
+}),
+    {
+      name: "imagen-heap-generation",
+      partialize: (state) => ({
+        history: state.history,
+        currentImage: state.currentImage,
+      }),
+    }
+  )
+);
