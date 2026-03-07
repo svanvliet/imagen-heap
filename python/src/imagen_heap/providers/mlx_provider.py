@@ -225,19 +225,29 @@ class MLXProvider(RuntimeProvider):
         entry = get_model_by_id(model_id) if model_id else None
         start = time.time()
 
-        if entry and entry.is_mflux_saved:
-            logger.info("Loading Redux with pre-quantized model: %s", model_id)
-            model_config = ModelConfig.from_name(entry.mflux_model_name)
-            self._flux_redux = Flux1Redux(model_config=model_config, model_path=entry.hf_repo_id)
-        elif model_id in MODEL_MAP:
-            model_name, quantize = MODEL_MAP[model_id]
-            logger.info("Loading Redux: %s (quantize=%d)", model_name, quantize)
-            model_config = ModelConfig.from_name(model_name)
-            self._flux_redux = Flux1Redux(model_config=model_config, quantize=quantize)
-        else:
-            logger.info("Loading Redux with dev defaults (q8)")
-            model_config = ModelConfig.from_name("dev")
-            self._flux_redux = Flux1Redux(model_config=model_config, quantize=8)
+        try:
+            if entry and entry.is_mflux_saved:
+                logger.info("Loading Redux with pre-quantized model: %s", model_id)
+                model_config = ModelConfig.from_name(entry.mflux_model_name)
+                self._flux_redux = Flux1Redux(model_config=model_config, model_path=entry.hf_repo_id)
+            elif model_id in MODEL_MAP:
+                model_name, quantize = MODEL_MAP[model_id]
+                logger.info("Loading Redux: %s (quantize=%d)", model_name, quantize)
+                model_config = ModelConfig.from_name(model_name)
+                self._flux_redux = Flux1Redux(model_config=model_config, quantize=quantize)
+            else:
+                logger.info("Loading Redux with dev defaults (q8)")
+                model_config = ModelConfig.from_name("dev")
+                self._flux_redux = Flux1Redux(model_config=model_config, quantize=8)
+        except Exception as e:
+            error_str = str(e)
+            if "gated" in error_str.lower() or "401" in error_str:
+                raise RuntimeError(
+                    "ADAPTER_NOT_AVAILABLE: The Redux adapter (FLUX.1-Redux-dev) requires download. "
+                    "Please download it from Model Manager → Adapters tab, or click the download "
+                    "button in the character section."
+                ) from e
+            raise
 
         self._loaded_redux_model = model_id
         elapsed = time.time() - start

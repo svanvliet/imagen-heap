@@ -21,6 +21,7 @@ from imagen_heap.providers import StubProvider
 from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig
 from imagen_heap.models.manager import ModelManager
 from imagen_heap.characters.manager import CharacterManager
+from imagen_heap.adapters.manager import AdapterManager
 
 # --- Logging setup ---
 # Logs go to both stderr (captured by Rust) and ~/.imagen-heap/logs/python.log
@@ -85,6 +86,7 @@ def create_server() -> RpcServer:
     orchestrator = PipelineOrchestrator(output_dir=output_dir, provider=provider)
     model_manager = ModelManager(models_dir=models_dir)
     character_manager = CharacterManager(base_dir=base_dir)
+    adapter_manager = AdapterManager()
 
     # --- Core methods ---
 
@@ -285,6 +287,40 @@ def create_server() -> RpcServer:
             raise ValueError(f"Character not found: {character_id}")
         return result
 
+    # --- Adapter management ---
+
+    def handle_get_adapters(params: dict) -> dict:
+        """List all adapters with download status."""
+        return {"adapters": adapter_manager.get_all_adapters()}
+
+    def handle_download_adapter(params: dict) -> dict:
+        """Download an adapter model from HuggingFace."""
+        adapter_id = params.get("adapter_id", "")
+        if not adapter_id:
+            raise ValueError("adapter_id is required")
+        hf_token = params.get("hf_token", None)
+
+        def on_adapter_progress(aid: str, downloaded: int, total: int) -> None:
+            _send_notification("adapter_download_progress", {
+                "adapter_id": aid,
+                "bytes_downloaded": downloaded,
+                "total_bytes": total,
+            })
+
+        return adapter_manager.download_adapter(
+            adapter_id,
+            progress_callback=on_adapter_progress,
+            hf_token=hf_token,
+        )
+
+    def handle_delete_adapter(params: dict) -> dict:
+        """Delete a downloaded adapter."""
+        adapter_id = params.get("adapter_id", "")
+        if not adapter_id:
+            raise ValueError("adapter_id is required")
+        success = adapter_manager.delete_adapter(adapter_id)
+        return {"success": success, "adapter_id": adapter_id}
+
     server.register("ping", handle_ping)
     server.register("get_device_info", handle_get_device_info)
     server.register("get_memory_status", handle_get_memory_status)
@@ -307,6 +343,11 @@ def create_server() -> RpcServer:
     server.register("update_character", handle_update_character)
     server.register("delete_character", handle_delete_character)
     server.register("get_character", handle_get_character)
+
+    # Adapter management
+    server.register("get_adapters", handle_get_adapters)
+    server.register("download_adapter", handle_download_adapter, background=True)
+    server.register("delete_adapter", handle_delete_adapter)
 
     return server
 

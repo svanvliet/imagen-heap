@@ -157,3 +157,31 @@ export async function deleteCharacter(characterId: string): Promise<{ success: b
 export async function getCharacter(characterId: string): Promise<Record<string, unknown>> {
   return invoke("get_character", { characterId });
 }
+
+// --- Adapter management ---
+
+/** List all adapters with download status */
+export async function getAdapters(): Promise<{ adapters: Array<{
+  id: string;
+  name: string;
+  adapter_type: string;
+  hf_repo_id: string;
+  compatible_models: string[];
+  file_size_bytes: number;
+  license_spdx: string;
+  description: string;
+  source_url: string;
+  status: string;
+}> }> {
+  return invoke("get_adapters");
+}
+
+/** Download an adapter model */
+export async function downloadAdapter(adapterId: string): Promise<Record<string, unknown>> {
+  return invoke("download_adapter", { adapterId });
+}
+
+/** Delete a downloaded adapter */
+export async function deleteAdapter(adapterId: string): Promise<{ success: boolean; adapter_id: string }> {
+  return invoke("delete_adapter", { adapterId });
+}

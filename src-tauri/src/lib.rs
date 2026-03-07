@@ -117,6 +117,14 @@ struct DownloadProgressEvent {
     total_bytes: u64,
 }
 
+/// Adapter download progress event sent to the frontend
+#[derive(Serialize, Clone)]
+struct AdapterDownloadProgressEvent {
+    adapter_id: String,
+    bytes_downloaded: u64,
+    total_bytes: u64,
+}
+
 /// Send an RPC request using raw components (thread-safe, no State<> dependency)
 fn send_rpc_raw(
     next_id: &Mutex<u64>,
@@ -379,6 +387,36 @@ fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle:
         .map_err(|e| format!("Failed to reveal folder: {}", e))
 }
 
+// --- Adapter management commands ---
+
+/// List all adapters with download status
+#[tauri::command]
+fn get_adapters(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: get_adapters");
+    send_rpc(&state, "get_adapters", serde_json::json!({}))
+}
+
+/// Download an adapter model (async, long-running)
+#[tauri::command]
+async fn download_adapter(state: State<'_, SidecarState>, adapter_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: download_adapter id={}", adapter_id);
+    let next_id = state.next_id.clone();
+    let pending = state.pending.clone();
+    let writer = state.writer.clone();
+    tokio::task::spawn_blocking(move || {
+        send_rpc_raw(&next_id, &pending, &writer, "download_adapter", serde_json::json!({"adapter_id": adapter_id}), 3600)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Delete a downloaded adapter
+#[tauri::command]
+fn delete_adapter(state: State<SidecarState>, adapter_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: delete_adapter id={}", adapter_id);
+    send_rpc(&state, "delete_adapter", serde_json::json!({"adapter_id": adapter_id}))
+}
+
 /// Start the Python sidecar process and set up the stdout reader thread
 fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, pending: Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>) -> Result<(Child, Box<dyn Write + Send>), String> {
     info!("Starting Python sidecar: {} {}", python_path, script_path);
@@ -455,6 +493,15 @@ fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, p
                                                 total_bytes: params.get("total_bytes").and_then(|v| v.as_u64()).unwrap_or(0),
                                             };
                                             let _ = handle.emit("backend:download_progress", event);
+                                        }
+                                    } else if method == "adapter_download_progress" {
+                                        if let Some(params) = &resp.params {
+                                            let event = AdapterDownloadProgressEvent {
+                                                adapter_id: params.get("adapter_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                                bytes_downloaded: params.get("bytes_downloaded").and_then(|v| v.as_u64()).unwrap_or(0),
+                                                total_bytes: params.get("total_bytes").and_then(|v| v.as_u64()).unwrap_or(0),
+                                            };
+                                            let _ = handle.emit("backend:adapter_download_progress", event);
                                         }
                                     }
                                 }
@@ -594,6 +641,9 @@ pub fn run() {
             update_character,
             delete_character,
             get_character,
+            get_adapters,
+            download_adapter,
+            delete_adapter,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

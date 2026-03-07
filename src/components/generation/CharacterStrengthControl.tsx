@@ -3,11 +3,16 @@
  * Simple mode: 3 presets (Subtle/Balanced/Strong)
  * Shows selected character name + reference image count.
  * Warns if selected model doesn't support character mode (requires dev).
+ * Shows inline Redux download prompt if adapter not installed.
  */
 import { useCharacterStore } from "@/stores/characters";
 import { useModelStore } from "@/stores/models";
-import { AlertTriangle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useAdapterStore } from "@/stores/adapters";
+import { formatBytes, cn } from "@/lib/utils";
+import { AlertTriangle, Download, Loader2, Check } from "lucide-react";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("CharacterStrengthControl");
 
 const STRENGTH_PRESETS = [
   { label: "Subtle", value: 0.3 },
@@ -24,6 +29,12 @@ export function CharacterStrengthControl() {
   const setStrength = useCharacterStore((s) => s.setCharacterStrength);
   const selectedModelId = useModelStore((s) => s.selectedModelId);
 
+  const isReduxAvailable = useAdapterStore((s) => s.isReduxAvailable);
+  const downloadingAdapters = useAdapterStore((s) => s.downloadingAdapters);
+  const adapterProgress = useAdapterStore((s) => s.downloadProgress);
+  const adapterErrors = useAdapterStore((s) => s.downloadErrors);
+  const downloadAdapterAction = useAdapterStore((s) => s.downloadAdapter);
+
   if (!selectedId) return null;
 
   const character = characters.find((c) => c.id === selectedId);
@@ -33,6 +44,21 @@ export function CharacterStrengthControl() {
     ? REDUX_COMPATIBLE_PREFIXES.some((p) => selectedModelId.startsWith(p))
     : false;
 
+  const reduxAvailable = isReduxAvailable();
+  const isDownloadingRedux = downloadingAdapters.has("flux-redux-dev");
+  const reduxProgress = adapterProgress.get("flux-redux-dev");
+  const reduxError = adapterErrors.get("flux-redux-dev");
+  const reduxPct = reduxProgress && reduxProgress.total_bytes > 0
+    ? Math.round((reduxProgress.bytes_downloaded / reduxProgress.total_bytes) * 100)
+    : null;
+
+  const handleDownloadRedux = () => {
+    useAdapterStore.getState().clearDownloadError("flux-redux-dev");
+    downloadAdapterAction("flux-redux-dev").catch((err) => {
+      log.error("Redux adapter download failed:", err);
+    });
+  };
+
   const closestPreset = STRENGTH_PRESETS.reduce((prev, curr) =>
     Math.abs(curr.value - strength) < Math.abs(prev.value - strength)
       ? curr
@@ -41,8 +67,67 @@ export function CharacterStrengthControl() {
 
   return (
     <div className="space-y-2 mt-2">
+      {/* Redux adapter download prompt */}
+      {!reduxAvailable && !isDownloadingRedux && (
+        <div className="px-2.5 py-2 bg-accent/5 border border-accent/20 rounded-md space-y-2">
+          <p className="text-[10px] text-text-secondary leading-tight">
+            Character generation requires the <span className="text-text-primary font-medium">Redux adapter</span> (~3.5 GB).
+          </p>
+          {reduxError ? (
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-amber-400 leading-tight">
+                {reduxError.includes("AUTH_REQUIRED")
+                  ? "HuggingFace authentication required. Add your token in Model Manager → Adapters."
+                  : reduxError.includes("LICENSE_REQUIRED")
+                    ? "License acceptance required on HuggingFace."
+                    : "Download failed. Check Model Manager → Adapters for details."}
+              </p>
+              <button
+                onClick={handleDownloadRedux}
+                className="w-full py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[10px] font-medium transition-colors flex items-center justify-center gap-1.5 border border-amber-500/20"
+              >
+                <Download size={10} /> Retry Download
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleDownloadRedux}
+              className="w-full py-1.5 rounded-md bg-accent hover:bg-accent-hover text-white text-[10px] font-medium transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Download size={10} /> Download Redux Adapter
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Redux download in progress */}
+      {isDownloadingRedux && (
+        <div className="px-2.5 py-2 bg-accent/5 border border-accent/20 rounded-md space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Loader2 size={10} className="text-accent animate-spin" />
+            <span className="text-[10px] text-text-secondary">
+              Downloading Redux adapter{reduxPct !== null ? ` · ${reduxPct}%` : "…"}
+            </span>
+          </div>
+          <div className="h-1 bg-bg-tertiary rounded-full overflow-hidden">
+            <div
+              className={cn(
+                "h-full bg-accent rounded-full",
+                reduxPct !== null ? "transition-all duration-1000" : "animate-pulse w-1/3"
+              )}
+              style={reduxPct !== null ? { width: `${reduxPct}%` } : undefined}
+            />
+          </div>
+          {reduxProgress && reduxProgress.bytes_downloaded > 0 && (
+            <p className="text-[9px] text-text-muted">
+              {formatBytes(reduxProgress.bytes_downloaded)} / {formatBytes(reduxProgress.total_bytes)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Model compatibility warning */}
-      {!isModelCompatible && (
+      {reduxAvailable && !isModelCompatible && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
           <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
           <span className="text-[10px] text-amber-300 leading-tight">
@@ -57,7 +142,8 @@ export function CharacterStrengthControl() {
           {character.reference_images.length} reference{" "}
           {character.reference_images.length === 1 ? "image" : "images"}
         </span>
-        <span className="text-[10px] text-text-secondary/60 uppercase tracking-wider">
+        <span className="text-[10px] text-text-secondary/60 uppercase tracking-wider flex items-center gap-1">
+          {reduxAvailable && <Check size={9} className="text-success" />}
           redux
         </span>
       </div>
