@@ -1,6 +1,7 @@
 import { useGenerationStore } from "@/stores/generation";
+import { useCharacterStore } from "@/stores/characters";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette, Trash2 } from "lucide-react";
+import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette, Trash2, User } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { STYLE_PRESETS } from "@/lib/constants";
@@ -264,6 +265,19 @@ export function Canvas() {
                   <span className="flex items-center gap-1">
                     <Palette size={10} />
                     {preset.icon} {preset.name}
+                  </span>
+                </>
+              ) : null;
+            })()}
+            {currentImage.config.characterId && (() => {
+              const chars = useCharacterStore.getState().characters;
+              const char = chars.find(c => c.id === currentImage.config.characterId);
+              return char ? (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <User size={10} />
+                    {char.name}
                   </span>
                 </>
               ) : null;

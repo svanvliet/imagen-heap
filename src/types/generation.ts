@@ -49,3 +49,15 @@ export interface GenerationError {
   message: string;
   suggestion?: string;
 }
+
+/** Character card for consistent identity generation */
+export interface Character {
+  id: string;
+  name: string;
+  description: string;
+  reference_images: string[];
+  thumbnail: string;
+  adapter_type: "auto" | "instantid" | "photomaker" | "pulid";
+  created_at: string;
+  last_used_at: string | null;
+}

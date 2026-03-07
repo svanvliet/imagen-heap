@@ -4,6 +4,7 @@ import { useGenerationStore } from "@/stores/generation";
 import { useModelStore } from "@/stores/models";
 import { useBackendStore } from "@/stores/backend";
 import { usePromptHistoryStore } from "@/stores/promptHistory";
+import { useCharacterStore } from "@/stores/characters";
 import { generateImage } from "@/lib/tauri";
 import { randomSeed } from "@/lib/utils";
 
@@ -67,6 +68,8 @@ export function useGeneration() {
         model_id: modelId,
         sampler: "euler",
         scheduler: "normal",
+        character_id: useCharacterStore.getState().selectedCharacterId,
+        character_strength: useCharacterStore.getState().characterStrength,
       });
 
       console.log("[useGeneration] Generation complete:", result);
@@ -92,6 +95,8 @@ export function useGeneration() {
           sampler: "euler",
           scheduler: "normal",
           modelId,
+          characterId: useCharacterStore.getState().selectedCharacterId ?? undefined,
+          characterStrength: useCharacterStore.getState().characterStrength,
           inferenceLocation: "local",
         },
         generationTimeMs: result.generation_time_ms,

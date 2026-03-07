@@ -31,6 +31,8 @@ export async function generateImage(config: {
   model_id: string;
   sampler: string;
   scheduler: string;
+  character_id?: string | null;
+  character_strength?: number;
 }): Promise<{
   id: string;
   image_path: string;
@@ -111,4 +113,47 @@ export async function resetWizard(): Promise<{ success: boolean }> {
 /** Open the model's folder in the system file manager */
 export async function revealModelFolder(modelId: string): Promise<void> {
   return invoke("reveal_model_folder", { modelId });
+}
+
+// --- Character management ---
+
+/** List all characters */
+export async function listCharacters(): Promise<Array<{
+  id: string;
+  name: string;
+  description: string;
+  reference_images: string[];
+  thumbnail: string;
+  adapter_type: string;
+  created_at: string;
+  last_used_at: string | null;
+}>> {
+  return invoke("list_characters");
+}
+
+/** Create a new character */
+export async function createCharacter(
+  name: string,
+  description: string,
+  referenceImagePaths: string[],
+): Promise<Record<string, unknown>> {
+  return invoke("create_character", { name, description, referenceImagePaths });
+}
+
+/** Update character metadata */
+export async function updateCharacter(
+  characterId: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return invoke("update_character", { characterId, updates });
+}
+
+/** Delete a character */
+export async function deleteCharacter(characterId: string): Promise<{ success: boolean; character_id: string }> {
+  return invoke("delete_character", { characterId });
+}
+
+/** Get a single character */
+export async function getCharacter(characterId: string): Promise<Record<string, unknown>> {
+  return invoke("get_character", { characterId });
 }

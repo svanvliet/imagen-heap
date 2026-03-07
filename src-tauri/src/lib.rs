@@ -317,6 +317,54 @@ fn reset_wizard(state: State<SidecarState>) -> Result<serde_json::Value, String>
     send_rpc(&state, "reset_wizard", serde_json::json!({}))
 }
 
+// --- Character management commands ---
+
+/// List all characters
+#[tauri::command]
+fn list_characters(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: list_characters");
+    send_rpc(&state, "list_characters", serde_json::json!({}))
+}
+
+/// Create a new character card
+#[tauri::command]
+fn create_character(state: State<SidecarState>, name: String, description: String, reference_image_paths: Vec<String>) -> Result<serde_json::Value, String> {
+    info!("Command: create_character name={}", name);
+    send_rpc(&state, "create_character", serde_json::json!({
+        "name": name,
+        "description": description,
+        "reference_image_paths": reference_image_paths,
+    }))
+}
+
+/// Update character metadata
+#[tauri::command]
+fn update_character(state: State<SidecarState>, character_id: String, updates: serde_json::Value) -> Result<serde_json::Value, String> {
+    info!("Command: update_character id={}", character_id);
+    send_rpc(&state, "update_character", serde_json::json!({
+        "character_id": character_id,
+        "updates": updates,
+    }))
+}
+
+/// Delete a character
+#[tauri::command]
+fn delete_character(state: State<SidecarState>, character_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: delete_character id={}", character_id);
+    send_rpc(&state, "delete_character", serde_json::json!({
+        "character_id": character_id,
+    }))
+}
+
+/// Get a single character by ID
+#[tauri::command]
+fn get_character(state: State<SidecarState>, character_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: get_character id={}", character_id);
+    send_rpc(&state, "get_character", serde_json::json!({
+        "character_id": character_id,
+    }))
+}
+
 /// Reveal a model's folder in the system file manager
 #[tauri::command]
 fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle: AppHandle) -> Result<(), String> {
@@ -455,6 +503,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SidecarState {
             process: Mutex::new(None),
             next_id: Arc::new(Mutex::new(1)),
@@ -540,6 +589,11 @@ pub fn run() {
             mark_wizard_done,
             reset_wizard,
             reveal_model_folder,
+            list_characters,
+            create_character,
+            update_character,
+            delete_character,
+            get_character,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

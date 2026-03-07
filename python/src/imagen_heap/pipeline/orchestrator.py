@@ -27,6 +27,8 @@ class GenerationConfig:
     model_id: str = "flux-schnell"
     sampler: str = "euler"
     scheduler: str = "normal"
+    character_id: str | None = None
+    character_strength: float = 0.6
 
 
 @dataclass
@@ -56,6 +58,8 @@ class GenerationResult:
                 "model_id": self.config.model_id,
                 "sampler": self.config.sampler,
                 "scheduler": self.config.scheduler,
+                "character_id": self.config.character_id,
+                "character_strength": self.config.character_strength,
             },
             "generation_time_ms": self.generation_time_ms,
             "created_at": self.created_at,

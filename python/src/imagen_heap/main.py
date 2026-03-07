@@ -20,6 +20,7 @@ from imagen_heap.rpc.server import RpcServer
 from imagen_heap.providers import StubProvider
 from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig
 from imagen_heap.models.manager import ModelManager
+from imagen_heap.characters.manager import CharacterManager
 
 # --- Logging setup ---
 # Logs go to both stderr (captured by Rust) and ~/.imagen-heap/logs/python.log
@@ -83,6 +84,7 @@ def create_server() -> RpcServer:
 
     orchestrator = PipelineOrchestrator(output_dir=output_dir, provider=provider)
     model_manager = ModelManager(models_dir=models_dir)
+    character_manager = CharacterManager(base_dir=base_dir)
 
     # --- Core methods ---
 
@@ -125,7 +127,16 @@ def create_server() -> RpcServer:
             model_id=params.get("model_id", "flux-schnell-q8"),
             sampler=params.get("sampler", "euler"),
             scheduler=params.get("scheduler", "normal"),
+            character_id=params.get("character_id", None),
+            character_strength=params.get("character_strength", 0.6),
         )
+
+        # Mark character as used
+        if config.character_id:
+            try:
+                character_manager.mark_used(config.character_id)
+            except Exception:
+                logger.debug("Failed to mark character as used", exc_info=True)
 
         # Auto-load model if provider supports it
         if hasattr(provider, 'load_model') and hasattr(provider, '_loaded_model'):
@@ -216,6 +227,52 @@ def create_server() -> RpcServer:
         """Get disk usage of downloaded models."""
         return model_manager.get_disk_usage()
 
+    # --- Character management methods ---
+
+    def handle_list_characters(params: dict) -> list[dict]:
+        """List all characters."""
+        return character_manager.list_characters()
+
+    def handle_create_character(params: dict) -> dict:
+        """Create a new character card."""
+        name = params.get("name", "").strip()
+        if not name:
+            raise ValueError("name is required")
+        return character_manager.create_character(
+            name=name,
+            description=params.get("description", ""),
+            reference_image_paths=params.get("reference_image_paths", []),
+        )
+
+    def handle_update_character(params: dict) -> dict:
+        """Update character metadata."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        updates = params.get("updates", {})
+        result = character_manager.update_character(character_id, updates)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    def handle_delete_character(params: dict) -> dict:
+        """Delete a character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        success = character_manager.delete_character(character_id)
+        return {"success": success, "character_id": character_id}
+
+    def handle_get_character(params: dict) -> dict:
+        """Get a single character by ID."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        result = character_manager.get_character(character_id)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
     server.register("ping", handle_ping)
     server.register("get_device_info", handle_get_device_info)
     server.register("get_memory_status", handle_get_memory_status)
@@ -231,6 +288,13 @@ def create_server() -> RpcServer:
     server.register("save_hf_token", handle_save_hf_token)
     server.register("delete_model", handle_delete_model)
     server.register("get_disk_usage", handle_get_disk_usage)
+
+    # Character management
+    server.register("list_characters", handle_list_characters)
+    server.register("create_character", handle_create_character)
+    server.register("update_character", handle_update_character)
+    server.register("delete_character", handle_delete_character)
+    server.register("get_character", handle_get_character)
 
     return server
 
