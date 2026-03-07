@@ -226,3 +226,17 @@ class CharacterManager:
         meta["reference_images"] = images
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         return meta
+
+    def get_reference_image_paths(self, character_id: str) -> list[str]:
+        """Get validated reference image paths for a character.
+
+        Returns only paths that actually exist on disk.
+        """
+        meta = self.get_character(character_id)
+        if not meta:
+            return []
+
+        paths = [p for p in meta.get("reference_images", []) if Path(p).exists()]
+        if not paths:
+            logger.warning("Character %s has no valid reference images", character_id)
+        return paths

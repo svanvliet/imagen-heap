@@ -138,6 +138,18 @@ def create_server() -> RpcServer:
             except Exception:
                 logger.debug("Failed to mark character as used", exc_info=True)
 
+        # Resolve character reference images for Redux
+        reference_image_paths = None
+        if config.character_id:
+            reference_image_paths = character_manager.get_reference_image_paths(config.character_id)
+            if reference_image_paths:
+                logger.info(
+                    "Character '%s': %d reference images, strength=%.2f",
+                    config.character_id, len(reference_image_paths), config.character_strength,
+                )
+            else:
+                logger.warning("Character '%s' has no valid reference images, falling back to standard generation", config.character_id)
+
         # Auto-load model if provider supports it
         if hasattr(provider, 'load_model') and hasattr(provider, '_loaded_model'):
             needed = config.model_id
@@ -153,7 +165,7 @@ def create_server() -> RpcServer:
                 "preview_base64": preview,
             })
 
-        result = orchestrator.generate(config, progress_callback=on_progress)
+        result = orchestrator.generate(config, progress_callback=on_progress, reference_image_paths=reference_image_paths)
         return result.to_dict()
 
     # --- Model management methods ---

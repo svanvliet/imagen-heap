@@ -80,8 +80,13 @@ class PipelineOrchestrator:
         self,
         config: GenerationConfig,
         progress_callback=None,
+        reference_image_paths: list[str] | None = None,
     ) -> GenerationResult:
-        """Run a full generation job."""
+        """Run a full generation job.
+
+        If reference_image_paths is provided and character_id is set,
+        uses Redux mode for character-consistent generation.
+        """
         job_id = str(uuid.uuid4())[:8]
         self._current_job_id = job_id
         logger.info("Starting generation job=%s prompt='%s' steps=%d", job_id, config.prompt[:50], config.steps)
@@ -93,16 +98,37 @@ class PipelineOrchestrator:
                 progress_callback(job_id, step, total, preview)
 
         try:
-            result = self.provider.text_to_image(
-                prompt=config.prompt,
-                negative_prompt=config.negative_prompt,
-                seed=config.seed,
-                steps=config.steps,
-                cfg=config.cfg,
-                width=config.width,
-                height=config.height,
-                progress_callback=wrapped_progress,
+            use_character = (
+                config.character_id
+                and reference_image_paths
+                and hasattr(self.provider, 'text_to_image_with_character')
             )
+
+            if use_character:
+                logger.info("Using Redux character mode with %d reference images", len(reference_image_paths))
+                result = self.provider.text_to_image_with_character(
+                    prompt=config.prompt,
+                    seed=config.seed,
+                    steps=config.steps,
+                    cfg=config.cfg,
+                    width=config.width,
+                    height=config.height,
+                    reference_image_paths=reference_image_paths,
+                    character_strength=config.character_strength,
+                    model_id=config.model_id,
+                    progress_callback=wrapped_progress,
+                )
+            else:
+                result = self.provider.text_to_image(
+                    prompt=config.prompt,
+                    negative_prompt=config.negative_prompt,
+                    seed=config.seed,
+                    steps=config.steps,
+                    cfg=config.cfg,
+                    width=config.width,
+                    height=config.height,
+                    progress_callback=wrapped_progress,
+                )
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 
