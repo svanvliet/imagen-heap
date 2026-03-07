@@ -102,3 +102,13 @@ export async function saveHfToken(token: string): Promise<{ success: boolean }> 
 export async function markWizardDone(): Promise<{ success: boolean }> {
   return invoke("mark_wizard_done");
 }
+
+/** Reset the wizard so it shows again on next launch */
+export async function resetWizard(): Promise<{ success: boolean }> {
+  return invoke("reset_wizard");
+}
+
+/** Open the model's folder in the system file manager */
+export async function revealModelFolder(modelId: string): Promise<void> {
+  return invoke("reveal_model_folder", { modelId });
+}

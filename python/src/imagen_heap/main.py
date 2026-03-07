@@ -163,6 +163,20 @@ def create_server() -> RpcServer:
         model_manager.mark_wizard_done()
         return {"success": True}
 
+    def handle_reset_wizard(params: dict) -> dict:
+        """Reset the first-run wizard so it shows again on next launch."""
+        model_manager.reset_wizard()
+        return {"success": True}
+
+    def handle_get_model_path(params: dict) -> dict:
+        """Return the local path for a downloaded model."""
+        model_id = params.get("model_id", "")
+        downloaded = model_manager.get_downloaded_models()
+        for m in downloaded:
+            if m["id"] == model_id:
+                return {"path": m.get("local_path", "")}
+        return {"path": ""}
+
     def handle_download_model(params: dict) -> dict:
         """Download a model from HuggingFace."""
         model_id = params.get("model_id", "")
@@ -206,6 +220,8 @@ def create_server() -> RpcServer:
     server.register("get_default_downloads", handle_get_default_downloads)
     server.register("is_first_run", handle_is_first_run)
     server.register("mark_wizard_done", handle_mark_wizard_done)
+    server.register("reset_wizard", handle_reset_wizard)
+    server.register("get_model_path", handle_get_model_path)
     server.register("download_model", handle_download_model)
     server.register("save_hf_token", handle_save_hf_token)
     server.register("delete_model", handle_delete_model)

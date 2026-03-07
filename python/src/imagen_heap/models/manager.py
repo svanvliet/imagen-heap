@@ -139,6 +139,13 @@ class ModelManager:
         wizard_done_path.write_text("done")
         logger.info("First-run wizard marked as completed")
 
+    def reset_wizard(self) -> None:
+        """Reset the first-run wizard so it shows again."""
+        wizard_done_path = self.models_dir / ".wizard_done"
+        if wizard_done_path.exists():
+            wizard_done_path.unlink()
+        logger.info("First-run wizard reset")
+
     def download_model(
         self,
         model_id: str,
@@ -167,11 +174,30 @@ class ModelManager:
         logger.info("Downloading model %s from %s", entry.name, entry.hf_repo_id)
 
         try:
+            import threading
             from huggingface_hub import snapshot_download
 
             # Use provided token, or fall back to saved token, or cached login
             token = hf_token or self._load_hf_token()
             logger.info("Using HF token: %s", "provided" if hf_token else ("saved" if token else "none"))
+
+            total_bytes = entry.file_size_bytes
+            # HF cache dir pattern: ~/.cache/huggingface/hub/models--org--name
+            cache_dir = os.path.expanduser(
+                f"~/.cache/huggingface/hub/models--{entry.hf_repo_id.replace('/', '--')}"
+            )
+
+            # Monitor download progress by polling cache directory size
+            stop_monitor = threading.Event()
+            if progress_callback and total_bytes > 0:
+                def _monitor_progress() -> None:
+                    while not stop_monitor.is_set():
+                        size = self._dir_size_fast(cache_dir)
+                        progress_callback(model_id, min(size, total_bytes), total_bytes)
+                        stop_monitor.wait(1.5)
+
+                monitor = threading.Thread(target=_monitor_progress, daemon=True)
+                monitor.start()
 
             local_path = snapshot_download(
                 repo_id=entry.hf_repo_id,
@@ -179,10 +205,12 @@ class ModelManager:
                 token=token or None,
             )
 
-            logger.info("Download complete: %s → %s", model_id, local_path)
-
+            # Stop monitor and send final 100% progress
+            stop_monitor.set()
             if progress_callback:
-                progress_callback(model_id, entry.file_size_bytes, entry.file_size_bytes)
+                progress_callback(model_id, total_bytes, total_bytes)
+
+            logger.info("Download complete: %s → %s", model_id, local_path)
 
             model = DownloadedModel(
                 entry=entry,
@@ -212,6 +240,21 @@ class ModelManager:
                 ) from e
 
             raise RuntimeError(f"Download failed: {e}") from e
+
+    @staticmethod
+    def _dir_size_fast(path: str) -> int:
+        """Quickly estimate directory size by summing file sizes (follows symlinks)."""
+        total = 0
+        try:
+            for dirpath, _dirs, files in os.walk(path, followlinks=True):
+                for f in files:
+                    try:
+                        total += os.stat(os.path.join(dirpath, f)).st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        return total
 
     def save_hf_token(self, token: str) -> None:
         """Save HuggingFace API token to disk."""

@@ -310,6 +310,27 @@ fn mark_wizard_done(state: State<SidecarState>) -> Result<serde_json::Value, Str
     send_rpc(&state, "mark_wizard_done", serde_json::json!({}))
 }
 
+/// Reset wizard so it shows again on next launch
+#[tauri::command]
+fn reset_wizard(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: reset_wizard");
+    send_rpc(&state, "reset_wizard", serde_json::json!({}))
+}
+
+/// Reveal a model's folder in the system file manager
+#[tauri::command]
+fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle: AppHandle) -> Result<(), String> {
+    info!("Command: reveal_model_folder for {}", model_id);
+    let result = send_rpc(&state, "get_model_path", serde_json::json!({"model_id": model_id}))?;
+    let path = result.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    if path.is_empty() {
+        return Err("Model path not found".to_string());
+    }
+    use tauri_plugin_opener::OpenerExt;
+    app_handle.opener().reveal_item_in_dir(std::path::Path::new(path))
+        .map_err(|e| format!("Failed to reveal folder: {}", e))
+}
+
 /// Start the Python sidecar process and set up the stdout reader thread
 fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, pending: Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>) -> Result<(Child, Box<dyn Write + Send>), String> {
     info!("Starting Python sidecar: {} {}", python_path, script_path);
@@ -505,6 +526,8 @@ pub fn run() {
             get_disk_usage,
             save_hf_token,
             mark_wizard_done,
+            reset_wizard,
+            reveal_model_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

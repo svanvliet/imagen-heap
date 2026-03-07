@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useModelStore, type ModelInfo, type DownloadProgress } from "@/stores/models";
 import { formatBytes, cn } from "@/lib/utils";
-import { saveHfToken } from "@/lib/tauri";
+import { saveHfToken, revealModelFolder, resetWizard } from "@/lib/tauri";
 import { createLogger } from "@/lib/logger";
 import {
   Download,
@@ -15,6 +15,8 @@ import {
   KeyRound,
   ExternalLink,
   AlertCircle,
+  FolderOpen,
+  RotateCcw,
 } from "lucide-react";
 
 const log = createLogger("ModelManager");
@@ -103,12 +105,25 @@ export function ModelManager({ onClose }: ModelManagerProps) {
               </p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-bg-hover text-text-secondary"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                await resetWizard();
+                onClose();
+                window.location.reload();
+              }}
+              className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
+              title="Re-run Setup Wizard"
+            >
+              <RotateCcw size={16} />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-md hover:bg-bg-hover text-text-secondary"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* HF Token input */}
@@ -166,6 +181,7 @@ export function ModelManager({ onClose }: ModelManagerProps) {
                 error={downloadErrors.get(model.id)}
                 onDownload={() => handleDownload(model.id)}
                 onDelete={() => handleDelete(model.id)}
+                onRevealFolder={() => revealModelFolder(model.id)}
                 confirmingDelete={confirmDelete === model.id}
                 onCancelDelete={() => setConfirmDelete(null)}
                 licenseBadgeClass={licenseBadge(model.license_spdx)}
@@ -185,6 +201,7 @@ function ModelCard({
   error,
   onDownload,
   onDelete,
+  onRevealFolder,
   confirmingDelete,
   onCancelDelete,
   licenseBadgeClass,
@@ -195,6 +212,7 @@ function ModelCard({
   error?: string;
   onDownload: () => void;
   onDelete: () => void;
+  onRevealFolder: () => void;
   confirmingDelete: boolean;
   onCancelDelete: () => void;
   licenseBadgeClass: string;
@@ -256,17 +274,20 @@ function ModelCard({
 
         <div className="flex-shrink-0">
           {isDownloading ? (
-            <div className="w-32">
+            <div className="w-36">
               <div className="flex items-center gap-2 mb-1">
                 <Loader2 size={12} className="text-accent animate-spin" />
                 <span className="text-[10px] text-text-muted">
-                  {pct !== null ? `${pct}%` : "Downloading…"}
+                  {pct !== null ? `${pct}%` : "Starting…"}
                 </span>
               </div>
               <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-accent rounded-full transition-all duration-300"
-                  style={{ width: pct !== null ? `${pct}%` : "30%" }}
+                  className={cn(
+                    "h-full bg-accent rounded-full",
+                    pct !== null ? "transition-all duration-1000" : "animate-pulse w-1/3"
+                  )}
+                  style={pct !== null ? { width: `${pct}%` } : undefined}
                 />
               </div>
               {progress && progress.bytes_downloaded > 0 && (
@@ -297,6 +318,13 @@ function ModelCard({
                   <span className="text-[10px] text-success font-medium mr-1">
                     <Check size={12} className="inline" /> Installed
                   </span>
+                  <button
+                    onClick={onRevealFolder}
+                    className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
+                    title="Show in Finder"
+                  >
+                    <FolderOpen size={14} />
+                  </button>
                   <button
                     onClick={onDelete}
                     className="p-1.5 rounded-md hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
