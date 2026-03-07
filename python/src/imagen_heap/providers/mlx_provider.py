@@ -7,6 +7,7 @@ import platform
 import time
 from pathlib import Path
 
+from imagen_heap.models import get_model_by_id
 from imagen_heap.providers import (
     RuntimeProvider,
     DeviceInfo,
@@ -16,7 +17,7 @@ from imagen_heap.providers import (
 
 logger = logging.getLogger(__name__)
 
-# Model ID → mflux model name mapping
+# Model ID → (mflux_model_name, quantize_level) for standard (non-saved) models
 MODEL_MAP = {
     "flux-schnell-q8": ("schnell", 8),
     "flux-schnell-q4": ("schnell", 4),
@@ -35,19 +36,6 @@ class MLXProvider(RuntimeProvider):
         logger.info("MLXProvider initialized")
 
     def load_model(self, model_id: str, quantization: str = "q8") -> None:
-        mapping = MODEL_MAP.get(model_id)
-        if not mapping:
-            # Try to parse model_id as "name-qN" pattern
-            for key, (name, quant) in MODEL_MAP.items():
-                if model_id.startswith(name) or key.startswith(model_id):
-                    mapping = (name, quant)
-                    break
-
-        if not mapping:
-            raise ValueError(f"Unknown model: {model_id}. Available: {list(MODEL_MAP.keys())}")
-
-        model_name, quantize = mapping
-
         # Skip reload if same model is already loaded
         if self._flux is not None and self._loaded_model == model_id:
             logger.info("Model %s already loaded, skipping", model_id)
@@ -57,17 +45,38 @@ class MLXProvider(RuntimeProvider):
         if self._flux is not None:
             self.unload_model()
 
-        logger.info("Loading model: %s (mflux name=%s, quantize=%d)", model_id, model_name, quantize)
+        entry = get_model_by_id(model_id)
         start = time.time()
 
         try:
             from mflux.models.flux.flux1 import Flux1
             from mflux.models.common.config.model_config import ModelConfig
 
-            model_config = ModelConfig.from_name(model_name)
-            self._flux = Flux1(model_config=model_config, quantize=quantize)
-            self._loaded_model = model_id
-            self._quantize = quantize
+            if entry and entry.is_mflux_saved:
+                # Pre-quantized mflux-saved model — load via model_path
+                logger.info("Loading pre-quantized model: %s (repo=%s)", model_id, entry.hf_repo_id)
+                model_config = ModelConfig.from_name(entry.mflux_model_name)
+                self._flux = Flux1(model_config=model_config, model_path=entry.hf_repo_id)
+                self._loaded_model = model_id
+                self._quantize = None  # already quantized
+            elif model_id in MODEL_MAP:
+                model_name, quantize = MODEL_MAP[model_id]
+                logger.info("Loading model: %s (mflux name=%s, quantize=%d)", model_id, model_name, quantize)
+                model_config = ModelConfig.from_name(model_name)
+                self._flux = Flux1(model_config=model_config, quantize=quantize)
+                self._loaded_model = model_id
+                self._quantize = quantize
+            elif entry and entry.mflux_model_name:
+                # Fallback: use registry entry's mflux_model_name
+                q = int(entry.quantization.replace("q", "")) if entry.quantization.startswith("q") else 8
+                logger.info("Loading model: %s (mflux name=%s, quantize=%d)", model_id, entry.mflux_model_name, q)
+                model_config = ModelConfig.from_name(entry.mflux_model_name)
+                self._flux = Flux1(model_config=model_config, quantize=q)
+                self._loaded_model = model_id
+                self._quantize = q
+            else:
+                raise ValueError(f"Unknown model: {model_id}. Available: {list(MODEL_MAP.keys())}")
+
             elapsed = time.time() - start
             logger.info("Model %s loaded in %.1fs", model_id, elapsed)
         except Exception:

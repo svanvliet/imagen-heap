@@ -23,6 +23,8 @@ class ModelEntry:
     hf_repo_id: str = ""
     # mflux model name for inference (e.g., "schnell", "dev")
     mflux_model_name: str = ""
+    # If True, this is a pre-quantized mflux-saved model — load via model_path, not model_config
+    is_mflux_saved: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -46,6 +48,25 @@ class ModelEntry:
 # mflux downloads the base HF model and quantizes on-the-fly.
 # file_size_bytes = approximate size of the base HF repo download.
 REGISTRY: list[ModelEntry] = [
+    # Pre-quantized community model — non-gated, ready to use, no auth needed
+    ModelEntry(
+        id="flux-schnell-mflux-q8",
+        name="FLUX.1-schnell (mflux 8-bit)",
+        version="1.0",
+        architecture="flux",
+        license_spdx="apache-2.0",
+        file_size_bytes=13_000_000_000,  # ~13 GB pre-quantized
+        quantization="q8",
+        min_memory_mb=8000,
+        source_url="https://huggingface.co/dhairyashil/FLUX.1-schnell-mflux-8bit",
+        checksum_sha256="",
+        is_default=True,
+        description="Fast 4-step generation. Pre-quantized, no auth required. Best starting model.",
+        filename="flux1-schnell-mflux-8bit",
+        hf_repo_id="dhairyashil/FLUX.1-schnell-mflux-8bit",
+        mflux_model_name="schnell",
+        is_mflux_saved=True,
+    ),
     ModelEntry(
         id="flux-schnell-q8",
         name="FLUX.1-schnell",
@@ -57,8 +78,8 @@ REGISTRY: list[ModelEntry] = [
         min_memory_mb=8000,
         source_url="https://huggingface.co/black-forest-labs/FLUX.1-schnell",
         checksum_sha256="",
-        is_default=True,
-        description="Fast 4-step generation. Apache 2.0 licensed. Great for drafts and iteration.",
+        is_default=False,
+        description="Fast 4-step generation. Apache 2.0 licensed. Requires HuggingFace auth.",
         filename="flux1-schnell",
         hf_repo_id="black-forest-labs/FLUX.1-schnell",
         mflux_model_name="schnell",
