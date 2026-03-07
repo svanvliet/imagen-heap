@@ -85,7 +85,10 @@ export const useModelStore = create<ModelState>((set, get) => ({
     const current = get().downloadingModels;
     const errMap = new Map(get().downloadErrors);
     errMap.delete(modelId);
-    set({ downloadingModels: new Set([...current, modelId]), downloadErrors: errMap });
+    // Initialize progress at 0 so the bar doesn't start mid-way from stale cache data
+    const initProgress = new Map(get().downloadProgress);
+    initProgress.set(modelId, { model_id: modelId, bytes_downloaded: 0, total_bytes: 0 });
+    set({ downloadingModels: new Set([...current, modelId]), downloadErrors: errMap, downloadProgress: initProgress });
 
     try {
       await downloadModel(modelId);

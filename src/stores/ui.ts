@@ -11,12 +11,15 @@ interface UIState {
   activePanelTab: "character" | "pose" | "controlnet";
   /** Theme preference */
   theme: "dark" | "light" | "system";
+  /** Whether the Model Manager modal is open */
+  showModelManager: boolean;
 
   toggleSidebar: () => void;
   togglePanel: () => void;
   setMode: (mode: "simple" | "advanced") => void;
   setActivePanelTab: (tab: "character" | "pose" | "controlnet") => void;
   setTheme: (theme: "dark" | "light" | "system") => void;
+  setShowModelManager: (show: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -25,10 +28,12 @@ export const useUIStore = create<UIState>((set) => ({
   mode: "simple",
   activePanelTab: "character",
   theme: "dark",
+  showModelManager: false,
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   togglePanel: () => set((s) => ({ panelCollapsed: !s.panelCollapsed })),
   setMode: (mode) => set({ mode, panelCollapsed: mode === "simple" }),
   setActivePanelTab: (tab) => set({ activePanelTab: tab }),
   setTheme: (theme) => set({ theme }),
+  setShowModelManager: (show) => set({ showModelManager: show }),
 }));

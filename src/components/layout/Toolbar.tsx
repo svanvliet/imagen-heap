@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -16,7 +15,8 @@ export function Toolbar() {
   const setMode = useUIStore((s) => s.setMode);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
-  const [showModelManager, setShowModelManager] = useState(false);
+  const showModelManager = useUIStore((s) => s.showModelManager);
+  const setShowModelManager = useUIStore((s) => s.setShowModelManager);
 
   return (
     <>

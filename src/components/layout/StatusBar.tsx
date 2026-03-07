@@ -1,5 +1,6 @@
 import { useBackendStore } from "@/stores/backend";
 import { useModelStore } from "@/stores/models";
+import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 import { Circle, Cpu, HardDrive, Loader2 } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
@@ -10,6 +11,7 @@ export function StatusBar() {
   const memoryUsageMb = useBackendStore((s) => s.memoryUsageMb);
   const downloadingModels = useModelStore((s) => s.downloadingModels);
   const downloadProgress = useModelStore((s) => s.downloadProgress);
+  const setShowModelManager = useUIStore((s) => s.setShowModelManager);
 
   const statusColor = {
     connected: "text-success",
@@ -40,9 +42,12 @@ export function StatusBar() {
         <span className="text-text-secondary">Backend: {statusLabel}</span>
       </div>
 
-      {/* Active download indicator */}
+      {/* Active download indicator — click to open Model Manager */}
       {activeDownloads > 0 && (
-        <div className="flex items-center gap-1.5 text-accent">
+        <button
+          onClick={() => setShowModelManager(true)}
+          className="flex items-center gap-1.5 text-accent hover:text-accent-hover transition-colors"
+        >
           <Loader2 size={11} className="animate-spin" />
           <span>
             Downloading{activeDownloads > 1 ? ` (${activeDownloads})` : ""}
@@ -54,7 +59,7 @@ export function StatusBar() {
               {firstDownload.total_bytes > 0 ? ` / ${formatBytes(firstDownload.total_bytes)}` : ""}
             </span>
           )}
-        </div>
+        </button>
       )}
 
       {/* Loaded model */}
