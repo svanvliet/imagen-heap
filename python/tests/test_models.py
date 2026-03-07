@@ -14,7 +14,7 @@ class TestModelRegistry:
 
     def test_default_models_exist(self):
         defaults = get_default_models()
-        assert len(defaults) >= 2  # schnell + dev
+        assert len(defaults) >= 1  # at least schnell
 
     def test_get_model_by_id(self):
         model = get_model_by_id("flux-schnell-q8")
@@ -46,14 +46,14 @@ class TestModelManager:
         assert len(models) == len(get_registry())
         assert all(m["status"] == "available" for m in models)
 
-    def test_simulate_download(self):
-        result = self.manager.simulate_download("flux-schnell-q8")
+    def test__simulate_download(self):
+        result = self.manager._simulate_download("flux-schnell-q8")
         assert result["status"] == "downloaded"
         assert result["local_path"]
         assert os.path.exists(result["local_path"])
 
     def test_after_download_not_first_run(self):
-        self.manager.simulate_download("flux-schnell-q8")
+        self.manager._simulate_download("flux-schnell-q8")
         assert not self.manager.is_first_run()
 
     def test_download_progress_callback(self):
@@ -61,12 +61,12 @@ class TestModelManager:
         def on_progress(model_id, downloaded, total):
             progress_updates.append((model_id, downloaded, total))
 
-        self.manager.simulate_download("flux-schnell-q8", progress_callback=on_progress)
+        self.manager._simulate_download("flux-schnell-q8", progress_callback=on_progress)
         assert len(progress_updates) == 10
         assert progress_updates[-1][0] == "flux-schnell-q8"
 
     def test_delete_model(self):
-        self.manager.simulate_download("flux-schnell-q8")
+        self.manager._simulate_download("flux-schnell-q8")
         assert not self.manager.is_first_run()
 
         result = self.manager.delete_model("flux-schnell-q8")
@@ -77,13 +77,13 @@ class TestModelManager:
         assert self.manager.delete_model("nonexistent") is False
 
     def test_disk_usage(self):
-        self.manager.simulate_download("flux-schnell-q8")
+        self.manager._simulate_download("flux-schnell-q8")
         usage = self.manager.get_disk_usage()
         assert usage["model_count"] == 1
         assert usage["used_bytes"] > 0
 
     def test_catalog_persistence(self):
-        self.manager.simulate_download("flux-schnell-q8")
+        self.manager._simulate_download("flux-schnell-q8")
         # Create a new manager pointing at the same directory
         manager2 = ModelManager(self.tmp_dir)
         assert not manager2.is_first_run()
@@ -93,5 +93,5 @@ class TestModelManager:
 
     def test_get_default_downloads(self):
         defaults = self.manager.get_default_download_list()
-        assert len(defaults) >= 2
+        assert len(defaults) >= 1
         assert all("already_downloaded" in d for d in defaults)

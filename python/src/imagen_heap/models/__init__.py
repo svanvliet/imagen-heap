@@ -19,6 +19,10 @@ class ModelEntry:
     is_default: bool
     description: str
     filename: str
+    # HuggingFace repo ID for real downloads (mflux uses this internally)
+    hf_repo_id: str = ""
+    # mflux model name for inference (e.g., "schnell", "dev")
+    mflux_model_name: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -39,7 +43,8 @@ class ModelEntry:
 
 
 # Curated model catalog for MVP
-# Sizes and checksums are representative — real values would come from HuggingFace
+# mflux downloads the base HF model and quantizes on-the-fly.
+# file_size_bytes = approximate size of the base HF repo download.
 REGISTRY: list[ModelEntry] = [
     ModelEntry(
         id="flux-schnell-q8",
@@ -47,14 +52,16 @@ REGISTRY: list[ModelEntry] = [
         version="1.0",
         architecture="flux",
         license_spdx="apache-2.0",
-        file_size_bytes=6_500_000_000,  # ~6.5 GB Q8
+        file_size_bytes=33_000_000_000,  # ~33 GB base repo
         quantization="q8",
         min_memory_mb=8000,
         source_url="https://huggingface.co/black-forest-labs/FLUX.1-schnell",
-        checksum_sha256="placeholder_schnell_q8",
+        checksum_sha256="",
         is_default=True,
         description="Fast 4-step generation. Apache 2.0 licensed. Great for drafts and iteration.",
-        filename="flux1-schnell-q8.safetensors",
+        filename="flux1-schnell",
+        hf_repo_id="black-forest-labs/FLUX.1-schnell",
+        mflux_model_name="schnell",
     ),
     ModelEntry(
         id="flux-schnell-q4",
@@ -62,14 +69,16 @@ REGISTRY: list[ModelEntry] = [
         version="1.0",
         architecture="flux",
         license_spdx="apache-2.0",
-        file_size_bytes=3_500_000_000,  # ~3.5 GB Q4
+        file_size_bytes=33_000_000_000,
         quantization="q4",
         min_memory_mb=5000,
         source_url="https://huggingface.co/black-forest-labs/FLUX.1-schnell",
-        checksum_sha256="placeholder_schnell_q4",
+        checksum_sha256="",
         is_default=False,
-        description="Fast 4-step generation. Smaller download, slightly reduced quality.",
-        filename="flux1-schnell-q4.safetensors",
+        description="Fast 4-step generation. Lower memory usage, slightly reduced quality.",
+        filename="flux1-schnell",
+        hf_repo_id="black-forest-labs/FLUX.1-schnell",
+        mflux_model_name="schnell",
     ),
     ModelEntry(
         id="flux-dev-q8",
@@ -77,14 +86,16 @@ REGISTRY: list[ModelEntry] = [
         version="1.0",
         architecture="flux",
         license_spdx="non-commercial",
-        file_size_bytes=12_000_000_000,  # ~12 GB Q8
+        file_size_bytes=33_000_000_000,
         quantization="q8",
         min_memory_mb=16000,
         source_url="https://huggingface.co/black-forest-labs/FLUX.1-dev",
-        checksum_sha256="placeholder_dev_q8",
-        is_default=True,
+        checksum_sha256="",
+        is_default=False,
         description="High quality 25-step generation. Non-commercial license. Best output quality.",
-        filename="flux1-dev-q8.safetensors",
+        filename="flux1-dev",
+        hf_repo_id="black-forest-labs/FLUX.1-dev",
+        mflux_model_name="dev",
     ),
     ModelEntry(
         id="flux-dev-q4",
@@ -92,14 +103,16 @@ REGISTRY: list[ModelEntry] = [
         version="1.0",
         architecture="flux",
         license_spdx="non-commercial",
-        file_size_bytes=6_000_000_000,  # ~6 GB Q4
+        file_size_bytes=33_000_000_000,
         quantization="q4",
         min_memory_mb=10000,
         source_url="https://huggingface.co/black-forest-labs/FLUX.1-dev",
-        checksum_sha256="placeholder_dev_q4",
+        checksum_sha256="",
         is_default=False,
-        description="High quality generation. Smaller download, acceptable quality floor.",
-        filename="flux1-dev-q4.safetensors",
+        description="High quality generation. Lower memory, acceptable quality floor.",
+        filename="flux1-dev",
+        hf_repo_id="black-forest-labs/FLUX.1-dev",
+        mflux_model_name="dev",
     ),
 ]
 

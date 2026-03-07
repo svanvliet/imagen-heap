@@ -58,7 +58,15 @@ def _send_notification(method: str, params: dict) -> None:
 def create_server() -> RpcServer:
     """Create and configure the RPC server with all handlers."""
     server = RpcServer()
-    provider = StubProvider()
+
+    # Auto-select provider: MLX if available, StubProvider fallback
+    try:
+        from imagen_heap.providers.mlx_provider import MLXProvider
+        provider = MLXProvider()
+        logger.info("Using MLXProvider (real inference)")
+    except Exception as e:
+        logger.warning("MLX not available (%s), falling back to StubProvider", e)
+        provider = StubProvider()
 
     # Determine directories — all data lives under ~/.imagen-heap/
     base_dir = os.environ.get(
@@ -109,10 +117,17 @@ def create_server() -> RpcServer:
             width=params.get("width", 1024),
             height=params.get("height", 1024),
             quality_profile=params.get("quality_profile", "fast"),
-            model_id=params.get("model_id", "flux-schnell"),
+            model_id=params.get("model_id", "flux-schnell-q8"),
             sampler=params.get("sampler", "euler"),
             scheduler=params.get("scheduler", "normal"),
         )
+
+        # Auto-load model if provider supports it
+        if hasattr(provider, 'load_model') and hasattr(provider, '_loaded_model'):
+            needed = config.model_id
+            if provider._loaded_model != needed:
+                logger.info("Auto-loading model %s for generation", needed)
+                provider.load_model(needed)
 
         def on_progress(job_id: str, step: int, total: int, preview: str | None) -> None:
             _send_notification("progress", {
@@ -144,7 +159,7 @@ def create_server() -> RpcServer:
         return {"is_first_run": model_manager.is_first_run()}
 
     def handle_download_model(params: dict) -> dict:
-        """Download a model (simulated for now)."""
+        """Download a model from HuggingFace."""
         model_id = params.get("model_id", "")
         if not model_id:
             raise ValueError("model_id is required")
@@ -156,7 +171,7 @@ def create_server() -> RpcServer:
                 "total_bytes": total,
             })
 
-        return model_manager.simulate_download(model_id, progress_callback=on_download_progress)
+        return model_manager.download_model(model_id, progress_callback=on_download_progress)
 
     def handle_delete_model(params: dict) -> dict:
         """Delete a downloaded model."""

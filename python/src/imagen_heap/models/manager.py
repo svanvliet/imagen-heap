@@ -105,28 +105,71 @@ class ModelManager:
         """Check if this is the first run (no models downloaded)."""
         return len(self._catalog) == 0
 
-    def simulate_download(
+    def download_model(
         self,
         model_id: str,
         progress_callback: ProgressCallback | None = None,
     ) -> dict:
-        """Simulate downloading a model (for development without real model files).
+        """Download a model from HuggingFace.
 
-        In production, this would download from source_url with resumable HTTP.
-        For now, it creates a small placeholder file.
+        Uses huggingface_hub to download model files. mflux will find
+        them in the HF cache when loading for inference.
         """
         entry = get_model_by_id(model_id)
         if entry is None:
             raise ValueError(f"Unknown model: {model_id}")
 
         if model_id in self._catalog:
+            logger.info("Model %s already downloaded", model_id)
             return self._catalog[model_id].to_dict()
+
+        if not entry.hf_repo_id:
+            return self._simulate_download(model_id, progress_callback)
+
+        logger.info("Downloading model %s from %s", entry.name, entry.hf_repo_id)
+
+        try:
+            from huggingface_hub import snapshot_download
+
+            # Download to the standard HF cache (mflux expects this)
+            local_path = snapshot_download(
+                repo_id=entry.hf_repo_id,
+                repo_type="model",
+            )
+
+            logger.info("Download complete: %s → %s", model_id, local_path)
+
+            # Report 100% progress
+            if progress_callback:
+                progress_callback(model_id, entry.file_size_bytes, entry.file_size_bytes)
+
+            model = DownloadedModel(
+                entry=entry,
+                local_path=str(local_path),
+                downloaded_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            )
+            self._catalog[model_id] = model
+            self._save_catalog()
+            return model.to_dict()
+
+        except Exception as e:
+            logger.exception("HuggingFace download failed for %s", model_id)
+            raise RuntimeError(f"Download failed: {e}") from e
+
+    def _simulate_download(
+        self,
+        model_id: str,
+        progress_callback: ProgressCallback | None = None,
+    ) -> dict:
+        """Fallback simulated download for models without HF repo IDs."""
+        entry = get_model_by_id(model_id)
+        if entry is None:
+            raise ValueError(f"Unknown model: {model_id}")
 
         logger.info("Simulating download for %s (%s)", entry.name, entry.quantization)
 
         local_path = str(self.models_dir / entry.filename)
 
-        # Simulate download progress
         total_size = entry.file_size_bytes
         chunk_size = total_size // 10
         downloaded = 0
@@ -135,14 +178,12 @@ class ModelManager:
             downloaded = min(downloaded + chunk_size, total_size)
             if progress_callback:
                 progress_callback(model_id, downloaded, total_size)
-            time.sleep(0.1)  # Simulate network delay
+            time.sleep(0.1)
 
-        # Create a small placeholder file
         Path(local_path).write_text(json.dumps({
             "model_id": model_id,
             "name": entry.name,
             "placeholder": True,
-            "note": "This is a placeholder. Real model file would be a safetensors/GGUF file.",
         }, indent=2))
 
         model = DownloadedModel(
@@ -152,8 +193,7 @@ class ModelManager:
         )
         self._catalog[model_id] = model
         self._save_catalog()
-
-        logger.info("Download complete: %s → %s", model_id, local_path)
+        logger.info("Simulated download complete: %s", model_id)
         return model.to_dict()
 
     def delete_model(self, model_id: str) -> bool:

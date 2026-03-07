@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M3 — Model Management ✅
+## Current Phase: M2b — Real Inference & Model Downloads 🚧
 
 ### Progress Log
 
@@ -46,6 +46,32 @@
   - Toolbar: added Model Manager button (Database icon)
   - Tests: 34 Python + 16 frontend — all passing
   - Tauri build: successful (.app + .dmg produced)
+- **06:45** — Bug fixes (First Run Wizard + backend connection):
+  - Fixed render guard: `showWizard && isFirstRun` failed when isFirstRun was null → simplified to `showWizard`
+  - Fixed checkFirstRun catch block: now sets isFirstRun=true in store on error
+  - Added ping retries (4 attempts) for sidecar initialization timing
+- **06:50** — Comprehensive logging added:
+  - Rust: fern-based file logging to ~/.imagen-heap/logs/tauri.log (debug to file, info to console)
+  - Python: RotatingFileHandler to ~/.imagen-heap/logs/python.log (5MB × 2 backups)
+  - Frontend: createLogger() utility with timestamped module-prefixed console output
+  - Logging revealed root cause: serde null-as-error bug + CWD path issue
+- **06:51** — Fixed serde null RPC error: `response.get("error")` returned `Some(Null)` for every successful response → added `.filter(|v| !v.is_null())`
+- **06:53** — Fixed Python sidecar path: `npx tauri dev` sets CWD to `src-tauri/`, added `../python/...` candidate
+- **07:00** — M2b real inference in progress:
+  - Updated plan: added M2b milestone between M2 and M3
+  - Migrated all data paths from ~/Documents/ImagenHeap/ to ~/.imagen-heap/
+  - Installed mflux 0.16.8 (MLX 0.30.6, mlx-metal 0.30.6)
+  - Created MLXProvider: wraps mflux Flux1 for real FLUX generation
+  - Updated model registry with HF repo IDs + mflux model names
+  - Replaced simulate_download with real huggingface_hub.snapshot_download
+  - Updated PipelineOrchestrator to handle mflux GeneratedImage objects
+  - Auto-provider selection: MLXProvider with StubProvider fallback
+  - Auto-model loading: loads requested model before generation
+  - Added download progress streaming: Rust DownloadProgressEvent → Tauri event → React
+  - ModelManager UI: real progress bar with percentage + bytes during downloads
+  - useDownloadProgress hook wired into App.tsx
+  - Tests: 34 Python + 16 frontend — all passing
+  - Tauri build: successful
 
 ### Commits
 | Hash | Milestone | Description |
@@ -54,3 +80,8 @@
 | `8123ec6` | M1 | feat(m1): project scaffold — Tauri + React + Python sidecar |
 | `2bd655b` | M2 | feat(m2): image generation pipeline with progress streaming |
 | `dfb60ff` | M3 | feat(m3): model management — registry, downloads, First Run Wizard, Model Manager UI |
+| `85e464d` | M3 | fix: First Run Wizard not showing |
+| `ba0eeca` | — | feat: comprehensive file-based logging across all layers |
+| `7b2f5d5` | — | fix: RPC error check treating null as error |
+| `725d89c` | — | fix: Python sidecar not found when CWD is src-tauri/ |
+| `1c79df3` | M2b | docs: add M2b (real inference) to plan, migrate data paths |

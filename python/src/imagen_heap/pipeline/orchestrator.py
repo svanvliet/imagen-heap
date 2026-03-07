@@ -89,7 +89,7 @@ class PipelineOrchestrator:
                 progress_callback(job_id, step, total, preview)
 
         try:
-            image_path = self.provider.text_to_image(
+            result = self.provider.text_to_image(
                 prompt=config.prompt,
                 negative_prompt=config.negative_prompt,
                 seed=config.seed,
@@ -102,13 +102,10 @@ class PipelineOrchestrator:
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 
-            # If provider returned empty string (stub), generate a placeholder
-            if not image_path:
-                image_path, thumbnail_path = self._generate_placeholder(config, job_id)
-            else:
-                thumbnail_path = image_path  # Real providers should generate thumbnails
+            # Handle different return types from providers
+            image_path, thumbnail_path = self._process_result(result, config, job_id)
 
-            result = GenerationResult(
+            result_obj = GenerationResult(
                 id=job_id,
                 image_path=str(image_path),
                 thumbnail_path=str(thumbnail_path),
@@ -118,10 +115,37 @@ class PipelineOrchestrator:
             )
 
             logger.info("Generation complete job=%s time=%dms path=%s", job_id, elapsed_ms, image_path)
-            return result
+            return result_obj
 
         finally:
             self._current_job_id = None
+
+    def _process_result(self, result, config: GenerationConfig, job_id: str) -> tuple[str, str]:
+        """Process the provider result into saved image + thumbnail paths."""
+        # mflux returns a GeneratedImage object
+        if hasattr(result, 'image') and hasattr(result, 'save'):
+            image_path = self.output_dir / f"{job_id}.png"
+            result.save(str(image_path), export_json_metadata=False, overwrite=True)
+            logger.debug("Saved mflux image to %s", image_path)
+
+            # Generate thumbnail
+            thumbnail_path = self.output_dir / f"{job_id}_thumb.png"
+            try:
+                thumb = result.image.copy()
+                thumb.thumbnail((256, 256))
+                thumb.save(str(thumbnail_path))
+            except Exception:
+                logger.debug("Thumbnail generation failed, using full image", exc_info=True)
+                thumbnail_path = image_path
+
+            return str(image_path), str(thumbnail_path)
+
+        # String path returned (or empty for stub)
+        if isinstance(result, str) and result:
+            return result, result
+
+        # Stub/empty — generate placeholder SVG
+        return self._generate_placeholder(config, job_id)
 
     def _generate_placeholder(self, config: GenerationConfig, job_id: str) -> tuple[str, str]:
         """Generate a placeholder SVG image for development/testing."""

@@ -1,0 +1,198 @@
+"""MLX Provider — real FLUX image generation on Apple Silicon via mflux."""
+
+import gc
+import logging
+import os
+import platform
+import time
+from pathlib import Path
+
+from imagen_heap.providers import (
+    RuntimeProvider,
+    DeviceInfo,
+    MemoryStatus,
+    ProgressCallback,
+)
+
+logger = logging.getLogger(__name__)
+
+# Model ID → mflux model name mapping
+MODEL_MAP = {
+    "flux-schnell-q8": ("schnell", 8),
+    "flux-schnell-q4": ("schnell", 4),
+    "flux-dev-q8": ("dev", 8),
+    "flux-dev-q4": ("dev", 4),
+}
+
+
+class MLXProvider(RuntimeProvider):
+    """FLUX image generation using mflux on Apple Silicon (MLX backend)."""
+
+    def __init__(self) -> None:
+        self._flux = None
+        self._loaded_model: str | None = None
+        self._quantize: int | None = None
+        logger.info("MLXProvider initialized")
+
+    def load_model(self, model_id: str, quantization: str = "q8") -> None:
+        mapping = MODEL_MAP.get(model_id)
+        if not mapping:
+            # Try to parse model_id as "name-qN" pattern
+            for key, (name, quant) in MODEL_MAP.items():
+                if model_id.startswith(name) or key.startswith(model_id):
+                    mapping = (name, quant)
+                    break
+
+        if not mapping:
+            raise ValueError(f"Unknown model: {model_id}. Available: {list(MODEL_MAP.keys())}")
+
+        model_name, quantize = mapping
+
+        # Skip reload if same model is already loaded
+        if self._flux is not None and self._loaded_model == model_id:
+            logger.info("Model %s already loaded, skipping", model_id)
+            return
+
+        # Unload previous model
+        if self._flux is not None:
+            self.unload_model()
+
+        logger.info("Loading model: %s (mflux name=%s, quantize=%d)", model_id, model_name, quantize)
+        start = time.time()
+
+        try:
+            from mflux.models.flux.flux1 import Flux1
+            from mflux.models.common.config.model_config import ModelConfig
+
+            model_config = ModelConfig.from_name(model_name)
+            self._flux = Flux1(model_config=model_config, quantize=quantize)
+            self._loaded_model = model_id
+            self._quantize = quantize
+            elapsed = time.time() - start
+            logger.info("Model %s loaded in %.1fs", model_id, elapsed)
+        except Exception:
+            logger.exception("Failed to load model %s", model_id)
+            raise
+
+    def unload_model(self) -> None:
+        if self._flux is not None:
+            logger.info("Unloading model: %s", self._loaded_model)
+            self._flux = None
+            self._loaded_model = None
+            self._quantize = None
+            gc.collect()
+            try:
+                import mlx.core as mx
+                mx.metal.clear_cache()
+                logger.debug("MLX metal cache cleared")
+            except Exception:
+                pass
+
+    def text_to_image(
+        self,
+        prompt: str,
+        negative_prompt: str,
+        seed: int,
+        steps: int,
+        cfg: float,
+        width: int,
+        height: int,
+        progress_callback: ProgressCallback | None = None,
+    ) -> str:
+        if self._flux is None:
+            raise RuntimeError("No model loaded. Call load_model() first.")
+
+        logger.info(
+            "Generating: prompt='%s' seed=%d steps=%d cfg=%.1f size=%dx%d",
+            prompt[:80], seed, steps, cfg, width, height,
+        )
+
+        # Register a progress callback via mflux's callback system
+        if progress_callback:
+            self._register_progress_callback(progress_callback, steps)
+
+        start = time.time()
+        try:
+            image = self._flux.generate_image(
+                seed=seed,
+                prompt=prompt,
+                negative_prompt=negative_prompt if negative_prompt else None,
+                num_inference_steps=steps,
+                width=width,
+                height=height,
+                guidance=cfg,
+            )
+            elapsed = time.time() - start
+            logger.info("Generation complete in %.1fs", elapsed)
+
+            return image
+
+        except Exception:
+            logger.exception("Generation failed")
+            raise
+
+    def _register_progress_callback(self, callback: ProgressCallback, total_steps: int) -> None:
+        """Register an InLoopCallback that forwards step progress."""
+        try:
+            from mflux.callbacks.callback_registry import CallbackRegistry
+
+            class ProgressReporter:
+                """InLoopCallback that reports progress to our callback."""
+                def call_in_loop(self, t, seed, prompt, latents, config, time_steps):
+                    current_step = t + 1
+                    callback(current_step, total_steps, None)
+
+            if hasattr(self._flux, 'callback_registry') and isinstance(self._flux.callback_registry, CallbackRegistry):
+                self._flux.callback_registry.register(ProgressReporter())
+                logger.debug("Progress callback registered")
+            else:
+                logger.debug("No callback_registry found on model, progress will not stream")
+        except Exception:
+            logger.debug("Could not register progress callback", exc_info=True)
+
+    def get_device_info(self) -> DeviceInfo:
+        try:
+            import mlx.core as mx
+            chip = "Apple Silicon"
+            # Try to get specific chip info
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["sysctl", "-n", "machdep.cpu.brand_string"],
+                    capture_output=True, text=True, timeout=2,
+                )
+                chip = result.stdout.strip() or "Apple Silicon"
+            except Exception:
+                pass
+
+            total_memory_mb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1024 * 1024)
+
+            return DeviceInfo(
+                chip=chip,
+                total_memory_mb=total_memory_mb,
+                os_version=platform.platform(),
+                provider_name="MLX (mflux)",
+            )
+        except Exception:
+            logger.debug("Failed to get device info", exc_info=True)
+            return DeviceInfo(
+                chip="unknown",
+                total_memory_mb=0,
+                os_version=platform.platform(),
+                provider_name="MLX (mflux)",
+            )
+
+    def get_memory_status(self) -> MemoryStatus:
+        try:
+            import mlx.core as mx
+            peak = mx.metal.get_peak_memory() / (1024 * 1024)
+            active = mx.metal.get_active_memory() / (1024 * 1024)
+            cache = mx.metal.get_cache_memory() / (1024 * 1024)
+            total_mb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1024 * 1024)
+            return MemoryStatus(
+                used_mb=active + cache,
+                peak_mb=peak,
+                available_mb=total_mb - active - cache,
+            )
+        except Exception:
+            return MemoryStatus(used_mb=0, peak_mb=0, available_mb=0)

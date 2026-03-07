@@ -109,6 +109,14 @@ struct ProgressEvent {
     preview_base64: Option<String>,
 }
 
+/// Download progress event sent to the frontend
+#[derive(Serialize, Clone)]
+struct DownloadProgressEvent {
+    model_id: String,
+    bytes_downloaded: u64,
+    total_bytes: u64,
+}
+
 /// Send an RPC request and wait for the response (with timeout)
 fn send_rpc(
     state: &SidecarState,
@@ -326,6 +334,15 @@ fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, p
                                                 preview_base64: params.get("preview_base64").and_then(|v| v.as_str()).map(|s| s.to_string()),
                                             };
                                             let _ = handle.emit("backend:progress", event);
+                                        }
+                                    } else if method == "download_progress" {
+                                        if let Some(params) = &resp.params {
+                                            let event = DownloadProgressEvent {
+                                                model_id: params.get("model_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                                bytes_downloaded: params.get("bytes_downloaded").and_then(|v| v.as_u64()).unwrap_or(0),
+                                                total_bytes: params.get("total_bytes").and_then(|v| v.as_u64()).unwrap_or(0),
+                                            };
+                                            let _ = handle.emit("backend:download_progress", event);
                                         }
                                     }
                                 }

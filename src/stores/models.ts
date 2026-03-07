@@ -21,11 +21,18 @@ export interface ModelInfo {
   downloaded_at: string | null;
 }
 
+export interface DownloadProgress {
+  model_id: string;
+  bytes_downloaded: number;
+  total_bytes: number;
+}
+
 interface ModelState {
   models: ModelInfo[];
   isFirstRun: boolean | null;
   isLoading: boolean;
   downloadingModels: Set<string>;
+  downloadProgress: Map<string, DownloadProgress>;
   diskUsage: { used_bytes: number; model_count: number } | null;
 
   loadModels: () => Promise<void>;
@@ -33,6 +40,7 @@ interface ModelState {
   downloadModel: (modelId: string) => Promise<void>;
   deleteModel: (modelId: string) => Promise<void>;
   loadDiskUsage: () => Promise<void>;
+  setDownloadProgress: (progress: DownloadProgress) => void;
 }
 
 export const useModelStore = create<ModelState>((set, get) => ({
@@ -40,6 +48,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
   isFirstRun: null,
   isLoading: false,
   downloadingModels: new Set(),
+  downloadProgress: new Map(),
   diskUsage: null,
 
   loadModels: async () => {
@@ -77,7 +86,9 @@ export const useModelStore = create<ModelState>((set, get) => ({
       log.info("Download complete:", modelId);
       const newDownloading = new Set(get().downloadingModels);
       newDownloading.delete(modelId);
-      set({ downloadingModels: newDownloading });
+      const newProgress = new Map(get().downloadProgress);
+      newProgress.delete(modelId);
+      set({ downloadingModels: newDownloading, downloadProgress: newProgress });
       // Refresh model list
       await get().loadModels();
       await get().loadDiskUsage();
@@ -109,5 +120,11 @@ export const useModelStore = create<ModelState>((set, get) => ({
     } catch (err) {
       log.error("Failed to load disk usage:", err);
     }
+  },
+
+  setDownloadProgress: (progress: DownloadProgress) => {
+    const newMap = new Map(get().downloadProgress);
+    newMap.set(progress.model_id, progress);
+    set({ downloadProgress: newMap });
   },
 }));

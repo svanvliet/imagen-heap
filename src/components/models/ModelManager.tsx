@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useModelStore, type ModelInfo } from "@/stores/models";
+import { useModelStore, type ModelInfo, type DownloadProgress } from "@/stores/models";
 import { formatBytes, cn } from "@/lib/utils";
 import {
   Download,
@@ -20,6 +20,7 @@ export function ModelManager({ onClose }: ModelManagerProps) {
   const models = useModelStore((s) => s.models);
   const isLoading = useModelStore((s) => s.isLoading);
   const downloadingModels = useModelStore((s) => s.downloadingModels);
+  const downloadProgress = useModelStore((s) => s.downloadProgress);
   const diskUsage = useModelStore((s) => s.diskUsage);
   const loadModels = useModelStore((s) => s.loadModels);
   const loadDiskUsage = useModelStore((s) => s.loadDiskUsage);
@@ -75,6 +76,7 @@ export function ModelManager({ onClose }: ModelManagerProps) {
                 key={model.id}
                 model={model}
                 isDownloading={downloadingModels.has(model.id)}
+                progress={downloadProgress.get(model.id)}
                 onDownload={() => downloadModelAction(model.id)}
                 onDelete={() => deleteModelAction(model.id)}
                 licenseBadgeClass={licenseBadge(model.license_spdx)}
@@ -90,17 +92,22 @@ export function ModelManager({ onClose }: ModelManagerProps) {
 function ModelCard({
   model,
   isDownloading,
+  progress,
   onDownload,
   onDelete,
   licenseBadgeClass,
 }: {
   model: ModelInfo;
   isDownloading: boolean;
+  progress?: DownloadProgress;
   onDownload: () => void;
   onDelete: () => void;
   licenseBadgeClass: string;
 }) {
   const isDownloaded = model.status === "downloaded";
+  const pct = progress && progress.total_bytes > 0
+    ? Math.round((progress.bytes_downloaded / progress.total_bytes) * 100)
+    : null;
 
   return (
     <div className="bg-bg-primary rounded-lg p-4 border border-border-subtle">
@@ -138,8 +145,24 @@ function ModelCard({
 
         <div className="flex-shrink-0">
           {isDownloading ? (
-            <div className="p-2">
-              <Loader2 size={18} className="text-accent animate-spin" />
+            <div className="w-32">
+              <div className="flex items-center gap-2 mb-1">
+                <Loader2 size={12} className="text-accent animate-spin" />
+                <span className="text-[10px] text-text-muted">
+                  {pct !== null ? `${pct}%` : "Downloading…"}
+                </span>
+              </div>
+              <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-accent rounded-full transition-all duration-300"
+                  style={{ width: pct !== null ? `${pct}%` : "30%" }}
+                />
+              </div>
+              {progress && progress.bytes_downloaded > 0 && (
+                <p className="text-[9px] text-text-muted mt-0.5">
+                  {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.total_bytes)}
+                </p>
+              )}
             </div>
           ) : isDownloaded ? (
             <div className="flex items-center gap-1">
