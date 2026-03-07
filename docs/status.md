@@ -1,8 +1,8 @@
 # Implementation Status
 
-## Current Phase: M2b — Real Inference & Model Downloads (nearly complete) 🚧
+## Current Phase: M2b — Real Inference & Model Downloads ✅ (generation working!)
 
-**Next up:** M2b.5 (end-to-end generation test), then M4 (Style Presets & Prompt Tools)
+**Next up:** M4 (Style Presets & Prompt Tools)
 
 ### Progress Log
 
@@ -124,16 +124,44 @@
   - 30 files, 53.9 GB, 0 broken symlinks, 0 incomplete blobs
   - HuggingFace download resume confirmed working after app termination
   - Two models now fully downloaded: flux-schnell-mflux-q8 (17GB) + flux-dev-q8 (54GB)
+- **09:15** — Plan updated with M2b.5–2b.10 (UI gap analysis):
+  - Identified critical missing features: model selection, advanced params, canvas preview, status bar generation progress, image export
+  - Added 6 new tasks to M2b to close the gaps before M4
+- **09:22** — M2b.5–2b.9 implemented (model selection, advanced params, canvas preview, export):
+  - **Model selection**: ModelSelector dropdown in sidebar, selectedModelId in store with auto-selection, "Use"/"Active" buttons in Model Manager, quality toggle auto-selects best model
+  - **Advanced params**: Expandable accordion with steps slider (1-50), CFG slider (1-20), seed input with lock/randomize/copy, negative prompt textarea
+  - **Canvas live preview**: Renders previewBase64 per step, overlay pill with step/elapsed/cancel, ElapsedTimer component, progress bar fallback when no preview
+  - **Status bar**: "Generating: Step X/Y" indicator with mini progress bar
+  - **Image export**: Hover toolbar (Save As, Copy), right-click context menus on canvas + filmstrip with Copy Prompt/Copy Seed
+  - 728 lines added across 11 files, all tests passing
+- **09:30** — Fixed mflux import path:
+  - `mflux.models.flux.flux1` → `mflux.models.flux.variants.txt2img.flux` (changed in mflux 0.16.8)
+  - Improved callback registry discovery (checks multiple attribute names)
+  - Added generationError state + error display on canvas (was silently failing)
+- **09:46** — Fixed model loading on startup + tiktoken dependency:
+  - App.tsx now calls loadModels() when backend connects (model dropdown was empty until Model Manager opened)
+  - Installed tiktoken (required by mflux's tokenizer)
+- **09:48** — Fixed SentencePiece tokenizer crash:
+  - transformers 5.3.0 tried parsing spiece.model via tiktoken BPE (wrong format) → installed protobuf to enable proper SentencePiece path
+- **09:55** — 🎉 **First real image generated!** (FLUX.1-schnell, 4 steps, 55s, 1024×1024)
+  - Image didn't render: Tauri WebView couldn't load local files → added assetProtocol scope in tauri.conf.json
+  - Context menu clicks not working: document click handler was eating events → switched to mousedown with data-context-menu guard
+- **10:06** — Full end-to-end generation working with image display, filmstrip, metadata, context menus
 
 ### What's Done (M2b status)
 
 | Task | Status | Notes |
 |------|--------|-------|
-| 2b.1 Install inference deps | ✅ Done | mflux 0.16.8, MLX 0.30.6 |
+| 2b.1 Install inference deps | ✅ Done | mflux 0.16.8, MLX 0.30.6, tiktoken, protobuf |
 | 2b.2 MLXProvider | ✅ Done | load_model, text_to_image, device/memory info |
 | 2b.3 Real HF downloads | ✅ Done | snapshot_download, progress polling, resume, auth/license handling |
 | 2b.4 Provider auto-selection | ✅ Done | MLXProvider with StubProvider fallback |
-| 2b.5 Integration verification | 🚧 Next | Need to test actual image generation end-to-end |
+| 2b.5 Model selection UI | ✅ Done | Sidebar dropdown, "Use"/"Active" in Model Manager, auto-select on quality toggle |
+| 2b.6 Advanced params | ✅ Done | Steps/CFG sliders, seed lock/randomize/copy, negative prompt |
+| 2b.7 Canvas live preview | ✅ Done | previewBase64 rendering, overlay pill, elapsed timer, cancel |
+| 2b.8 Generation status bar | ✅ Done | "Generating: Step X/Y" with mini progress bar |
+| 2b.9 Image export | ✅ Done | Save As, Copy, context menus on canvas + filmstrip |
+| 2b.10 Integration verification | ✅ Done | Real image generated and displayed end-to-end |
 
 ### Commits
 | Hash | Milestone | Description |
@@ -161,6 +189,14 @@
 | `266ae09` | M2b | fix: make URLs in gated model errors clickable |
 | `822b529` | M2b | fix: RPC server runs downloads/generation in background threads |
 | `fe2ec80` | M2b | fix: progress bar starts at 0, status bar download opens Model Manager |
+| `af7c424` | M2b | docs: sync plan.md and status.md with actual implementation state |
+| `c7afc09` | M2b | docs: add M2b.5-2b.10 — model selection, advanced params, canvas preview, export |
+| `187828a` | M2b | feat: model selection, advanced params, canvas preview, generation status, export |
+| `6acad35` | M2b | fix: mflux import path for v0.16.8, add generation error display |
+| `39f21c7` | M2b | fix: load models on startup, add tiktoken dependency |
+| `a8f54f4` | M2b | fix: add protobuf dep for SentencePiece tokenizer loading |
+| `0c6c9cc` | M2b | fix: asset protocol scope for image rendering, context menu clicks |
+| `42af3b2` | M2b | fix: move asset protocol scope to tauri.conf.json |
 
 ### Test Counts
 - Python: 35 tests passing
