@@ -267,10 +267,10 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
             </label>
             <div className="grid grid-cols-4 gap-1.5">
               {([
-                { value: "auto" as const, label: "Auto", desc: "Best available" },
-                { value: "redux" as const, label: "Redux", desc: "MLX · fast" },
-                { value: "ip-adapter" as const, label: "IP-Adapter", desc: "Diffusers · style" },
-                { value: "faceid" as const, label: "FaceID", desc: "SDXL · face identity" },
+                { value: "auto" as const, label: "Auto", desc: "Best available", tip: "Automatically selects the best adapter based on what's installed" },
+                { value: "redux" as const, label: "Redux", desc: "MLX · fast", tip: "Fast generation via MLX — captures general style and appearance" },
+                { value: "ip-adapter" as const, label: "IP-Adapter", desc: "FLUX · style", tip: "CLIP-based style/composition transfer from reference images" },
+                { value: "faceid" as const, label: "FaceID", desc: "SDXL · face ✦", tip: "True facial identity — best for consistent character faces across scenes" },
               ]).map((opt) => {
                 const disabled =
                   (opt.value === "ip-adapter" && !providers.diffusers) ||
@@ -280,6 +280,7 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
                     key={opt.value}
                     onClick={() => !disabled && setAdapterType(opt.value)}
                     disabled={disabled}
+                    title={opt.tip}
                     className={cn(
                       "px-2 py-2 rounded-lg border text-left transition-all",
                       adapterType === opt.value
@@ -294,19 +295,30 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
                 );
               })}
             </div>
+            {/* Contextual info for selected adapter type */}
+            {adapterType === "redux" && (
+              <p className="text-[10px] text-text-secondary/70 mt-1.5">
+                Uses FLUX via MLX for fast generation (~60s). Captures general style but not precise facial features.
+              </p>
+            )}
+            {adapterType === "ip-adapter" && providers.diffusers && (
+              <p className="text-[10px] text-text-secondary/70 mt-1.5">
+                Uses CLIP vision embeddings for style and composition transfer. Good for overall look, not face-specific.
+              </p>
+            )}
             {adapterType === "ip-adapter" && !providers.diffusers && (
-              <p className="text-[10px] text-amber-400 mt-1">
+              <p className="text-[10px] text-amber-400 mt-1.5">
                 IP-Adapter requires PyTorch + diffusers. Install deps to enable.
               </p>
             )}
-            {adapterType === "faceid" && !providers.faceid && (
-              <p className="text-[10px] text-amber-400 mt-1">
-                FaceID requires InsightFace + ONNX Runtime. Install deps to enable.
+            {adapterType === "faceid" && providers.faceid && (
+              <p className="text-[10px] text-emerald-400/80 mt-1.5">
+                ✦ Recommended for character consistency — uses InsightFace ArcFace embeddings with SDXL for true face likeness. ~8.8 GB of adapter downloads required.
               </p>
             )}
-            {adapterType === "faceid" && providers.faceid && (
-              <p className="text-[10px] text-emerald-400/80 mt-1">
-                Best for face likeness — uses InsightFace ArcFace embeddings with SDXL.
+            {adapterType === "faceid" && !providers.faceid && (
+              <p className="text-[10px] text-amber-400 mt-1.5">
+                FaceID requires InsightFace + ONNX Runtime. Install deps to enable.
               </p>
             )}
           </div>

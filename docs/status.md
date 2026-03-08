@@ -351,15 +351,15 @@
 ### M5c Progress (SDXL + IP-Adapter FaceID)
 | Task | Status |
 |------|--------|
-| M5c-1: InsightFace integration | 🔲 Pending |
-| M5c-2: SDXL FaceID provider support | 🔲 Pending |
-| M5c-3: Orchestrator routing for FaceID | 🔲 Pending |
-| M5c-4: Adapter registry entries | 🔲 Pending |
-| M5c-5: FaceID adapter type UI | 🔲 Pending |
+| M5c-1: InsightFace integration | ✅ |
+| M5c-2: SDXL FaceID provider support | ✅ |
+| M5c-3: Orchestrator routing for FaceID | ✅ |
+| M5c-4: Adapter registry entries | ✅ |
+| M5c-5: FaceID adapter type UI | ✅ |
 | M5c-6: Adapter comparison UX | 🔲 Pending |
-| M5c-7: Testing and validation | 🔲 Pending |
+| M5c-7: Testing and validation | 🔲 Pending — needs user end-to-end test |
 
 ### Test Counts
-- Python: 41 tests passing
+- Python: 55 tests passing (14 new FaceID tests)
 - Frontend: 16 tests passing (vitest)
 - Rust: cargo check passes
