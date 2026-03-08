@@ -37,6 +37,9 @@ class FaceEmbeddingExtractor:
         import insightface
         import onnxruntime
 
+        # Validate InsightFace model cache — detect corrupt/partial downloads
+        self._validate_model_cache()
+
         # Select execution providers — prefer CoreML on macOS for ANE acceleration
         available_eps = onnxruntime.get_available_providers()
         providers = []
@@ -56,6 +59,23 @@ class FaceEmbeddingExtractor:
         # det_size controls detection resolution — 640 is default, good balance
         self._app.prepare(ctx_id=0, det_size=(640, 640))
         logger.info("InsightFace ready")
+
+    @staticmethod
+    def _validate_model_cache() -> None:
+        """Remove corrupt/partial InsightFace model downloads so they re-download."""
+        import zipfile
+        model_dir = Path.home() / ".insightface" / "models"
+        zip_path = model_dir / f"{INSIGHTFACE_MODEL}.zip"
+        extracted_dir = model_dir / INSIGHTFACE_MODEL
+
+        if zip_path.exists() and not extracted_dir.exists():
+            # Zip exists but wasn't extracted — check if it's valid
+            try:
+                with zipfile.ZipFile(zip_path) as z:
+                    z.testzip()  # returns None if ok, else name of first bad file
+            except (zipfile.BadZipFile, Exception) as e:
+                logger.warning("Removing corrupt InsightFace download (%s): %s", zip_path, e)
+                zip_path.unlink(missing_ok=True)
 
     def extract_face_embedding(self, image_path: str) -> np.ndarray:
         """Extract a 512-dim ArcFace embedding from a single image.
