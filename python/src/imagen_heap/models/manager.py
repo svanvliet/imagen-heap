@@ -201,13 +201,22 @@ class ModelManager:
                 monitor = threading.Thread(target=_monitor_progress, daemon=True)
                 monitor.start()
 
-            # For non-mflux models (e.g. SDXL via diffusers), only download
-            # safetensors + config files — skip flax, onnx, openvino variants
+            # For diffusers models (SDXL etc.) only download fp16 component
+            # files — skip monolithic root-level checkpoints, fp32 duplicates,
+            # onnx, flax, openvino, and example LoRAs.  Saves ~15GB+ on SDXL.
             allow_patterns = None
+            ignore_patterns = None
             if entry.architecture != "flux":
                 allow_patterns = [
-                    "*.safetensors", "*.json", "*.txt", "*.model",
-                    "**/*.safetensors", "**/*.json", "**/*.txt", "**/*.model",
+                    "**/*.fp16.safetensors",  # fp16 weight files only
+                    "**/*.json",              # component configs
+                    "**/*.txt",               # tokenizer vocabs
+                    "**/*.model",             # sentencepiece models
+                    "*.json",                 # root model_index.json
+                    "*.txt",                  # root configs
+                ]
+                ignore_patterns = [
+                    "vae_1_0/**",             # duplicate VAE in SDXL base repo
                 ]
 
             local_path = snapshot_download(
@@ -215,6 +224,7 @@ class ModelManager:
                 repo_type="model",
                 token=token or None,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
             )
 
             # Stop monitor and send final 100% progress

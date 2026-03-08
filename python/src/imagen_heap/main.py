@@ -55,11 +55,18 @@ _stdout_lock = threading.Lock()
 
 
 def _send_notification(method: str, params: dict) -> None:
-    """Send a JSON-RPC notification (no id) to stdout (thread-safe)."""
+    """Send a JSON-RPC notification (no id) to stdout (thread-safe).
+
+    Silently drops the notification if the pipe is broken (e.g. the
+    frontend closed the sidecar connection while a download is running).
+    """
     msg = json.dumps({"jsonrpc": "2.0", "method": method, "params": params})
-    with _stdout_lock:
-        sys.stdout.write(msg + "\n")
-        sys.stdout.flush()
+    try:
+        with _stdout_lock:
+            sys.stdout.write(msg + "\n")
+            sys.stdout.flush()
+    except BrokenPipeError:
+        pass
 
 
 def create_server() -> RpcServer:

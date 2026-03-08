@@ -35,11 +35,14 @@ class RpcServer:
         logger.debug("Registered RPC method: %s%s", method, " (background)" if background else "")
 
     def _write_response(self, response_str: str) -> None:
-        """Thread-safe write to stdout."""
-        with self._write_lock:
-            sys.stdout.write(response_str + "\n")
-            sys.stdout.flush()
-            logger.debug("Sent response: %s", response_str[:200])
+        """Thread-safe write to stdout. Silently drops on broken pipe."""
+        try:
+            with self._write_lock:
+                sys.stdout.write(response_str + "\n")
+                sys.stdout.flush()
+                logger.debug("Sent response: %s", response_str[:200])
+        except BrokenPipeError:
+            logger.warning("Broken pipe — frontend disconnected")
 
     def _dispatch(self, request: RpcRequest) -> RpcResponse:
         """Dispatch a request to the appropriate handler."""

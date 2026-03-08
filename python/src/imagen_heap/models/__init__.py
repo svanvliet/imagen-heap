@@ -142,7 +142,7 @@ REGISTRY: list[ModelEntry] = [
         version="1.0",
         architecture="sdxl",
         license_spdx="CreativeML-OpenRAIL-M",
-        file_size_bytes=6_500_000_000,  # ~6.5 GB (safetensors only)
+        file_size_bytes=6_940_000_000,  # ~6.9 GB fp16 components
         quantization="fp16",
         min_memory_mb=8000,
         source_url="https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
@@ -158,7 +158,7 @@ REGISTRY: list[ModelEntry] = [
         version="5.0",
         architecture="sdxl",
         license_spdx="CreativeML-OpenRAIL-M",
-        file_size_bytes=6_500_000_000,  # ~6.5 GB
+        file_size_bytes=6_940_000_000,  # ~6.9 GB fp16 components
         quantization="fp16",
         min_memory_mb=8000,
         source_url="https://huggingface.co/SG161222/RealVisXL_V5.0",
@@ -174,15 +174,15 @@ REGISTRY: list[ModelEntry] = [
         version="9.0",
         architecture="sdxl",
         license_spdx="CreativeML-OpenRAIL-M",
-        file_size_bytes=6_500_000_000,  # ~6.5 GB
+        file_size_bytes=6_940_000_000,  # ~6.9 GB fp16 components
         quantization="fp16",
         min_memory_mb=8000,
-        source_url="https://huggingface.co/RunDiffusion/Juggernaut-XL",
+        source_url="https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
         checksum_sha256="",
         is_default=False,
         description="Top all-around SDXL model — excellent portraits, landscapes, and fantasy. Great prompt adherence. SDXL fine-tune, FaceID compatible.",
         filename="juggernaut-xl-v9",
-        hf_repo_id="RunDiffusion/Juggernaut-XL",
+        hf_repo_id="RunDiffusion/Juggernaut-XL-v9",
     ),
 ]
 

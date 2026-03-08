@@ -352,6 +352,7 @@ class DiffusersProvider(RuntimeProvider):
         self._pipe = StableDiffusionXLPipeline.from_pretrained(
             repo,
             torch_dtype=self._torch.float16,  # SDXL works best with float16
+            variant="fp16",  # use the fp16 weight files we downloaded
             token=token,
         )
         self._pipe.enable_model_cpu_offload()
