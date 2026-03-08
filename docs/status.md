@@ -1,8 +1,8 @@
 # Implementation Status
 
-## Current Phase: M4 — Style Presets & Prompt Tools ✅ | Polish pass complete | v0.1.0 released
+## Current Phase: M5 — Character System ✅ | M6 (Pose & Composition Control) next
 
-**Next up:** M5 (Gallery & History)
+**Branch:** `feature/character-system` (ahead of main by ~8 commits, ready to merge)
 
 ### Progress Log
 
@@ -200,6 +200,40 @@
   - Icon border doubled to 50px (2× thicker) for more visible inner stroke
   - Added `image-png` Tauri feature + `window.set_icon()` in debug builds so custom icon shows during `./run.sh`
 
+#### 2026-03-08
+
+- **M5 — Character System** (on `feature/character-system` branch):
+  - **feat(m5):** Character CRUD system — CharacterManager (JSON file storage), 5 RPC handlers, 5 Rust Tauri commands, Zustand character store
+  - **feat(m5):** Character UI — CharacterAvatarRow (horizontal scroll, accent ring, right-click delete), CharacterCreateDialog (native file picker, image preview grid), CharacterStrengthControl (3 presets + slider)
+  - **chore:** Added Alice in Wonderland reference images for character testing (`examples/characters/alice-in-wonderland/source/`)
+  - **docs:** Redux adapter research added to `docs/research.md` §8 — confirmed IP-Adapter/InstantID/PuLID unavailable in mflux, Redux chosen as best native option
+  - **feat(m5.5):** Redux adapter integration — `Flux1Redux` wired into MLXProvider with `text_to_image_with_character()`, model compatibility validation (requires dev, not schnell), progress callbacks refactored for both model types
+  - **docs:** Added adapter management requirements (FR-058–062b) to `docs/requirements.md` §5.5b
+  - **feat(m5.6):** Full adapter management system — `AdapterManager` class, 3 RPC handlers, 3 Rust commands, Zustand adapter store, Model Manager rewritten with "Models" | "Adapters" tab bar, AdapterCard component, inline Redux download in CharacterStrengthControl
+  - **fix:** Adapter auth — AdapterManager was reading HF token from wrong path (`~/.imagen-heap/.hf_token` → `~/.imagen-heap/models/.hf_token`), fixed error classification (token+gated=LICENSE_REQUIRED, not AUTH_REQUIRED)
+  - **fix:** Generation timeout — Redux generation takes ~11.5 min on M3 Max (687s for 25 steps + 5 ref images), but Rust timeout was 600s. Increased to 1800s (30 min). Added try/except in ProgressReporter.call_in_loop for silent callback error logging.
+  - **Research:** Redux produces images with similar style/aesthetic to reference but NOT precise facial identity — this is a fundamental limitation of the adapter. Investigated mflux variants (`concept_attention`, `kontext`, `in_context`). IP-Adapter/PuLID still not available in mflux (latest version 0.16.9). Future opportunity: monitor mflux for native identity adapters.
+
+### What's Done (M5 status)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| 5.1 Identity adapter research | ✅ Done | Redux chosen (only viable native option in mflux) |
+| 5.2 Character Card CRUD | ✅ Done | CharacterManager, JSON storage, RPC handlers, Rust commands |
+| 5.3 Character Card UI | ✅ Done | AvatarRow, CreateDialog, StrengthControl |
+| 5.4 Generation with character | ✅ Done | Config extended, metadata wiring, last_used_at tracking |
+| 5.5 Redux adapter integration | ✅ Done | MLXProvider Flux1Redux, pipeline routing, model compat check |
+| 5.6 Adapter management | ✅ Done | Registry, manager, download/delete, Model Manager tab, inline download |
+| 5.7 Identity research | 📋 Noted | Redux = holistic style, not face-specific. Awaiting mflux upstream |
+
+### Known Issues (M5)
+
+| Issue | Severity | Notes |
+|-------|----------|-------|
+| Progress callbacks silent during Redux generation | Low | Callbacks registered but never fire. Try/except logging added — needs testing. |
+| Redux not face-specific | Medium | Fundamental limitation — images look "similar" but don't match facial identity. Documented tuning tips. |
+| Redux generation slow (~11.5 min) | Low | Expected for dev-q8 + 25 steps + 5 ref images on M3 Max. Timeout increased to 30 min. |
+
 ### What's Done (M4 status)
 
 | Task | Status | Notes |
@@ -280,6 +314,15 @@
 | `48d0e43` | — | fix: thicker icon border (2x), set window icon in dev mode |
 | `a78e218` | — | docs: update status.md and plan.md — M4 complete, polish pass done |
 | `a530998` | — | docs: add detailed README with screenshots, architecture, and roadmap |
+| `086e870` | — | feat: build.sh release automation (--release tag, --notes) |
+| `35da434` | M5 | feat(m5): character system — CRUD, avatar row, creation dialog, strength control |
+| `d19fa5b` | M5 | chore: add Alice in Wonderland reference images for character testing |
+| `396d430` | M5 | docs: Redux adapter research + M5.5 implementation plan |
+| `09c1a87` | M5.5 | feat(m5.5): Redux adapter integration for character-consistent generation |
+| `d19d38b` | M5.6 | docs: add adapter management requirements (FR-058–062b) and M5.6 plan |
+| `525f6f5` | M5.6 | feat(m5.6): adapter management system with Model Manager tab + inline download |
+| `edac91f` | M5.6 | fix: adapter auth — use saved HF token + correct LICENSE_REQUIRED detection |
+| `e118181` | M5.6 | fix: increase generate timeout to 30min for Redux + add callback error logging |
 
 ### Test Counts
 - Python: 35 tests passing

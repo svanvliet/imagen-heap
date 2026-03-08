@@ -1,7 +1,7 @@
 # Implementation Plan: Imagen Heap
 
-**Status:** Draft
-**Last Updated:** 2026-03-07
+**Status:** Active
+**Last Updated:** 2026-03-08
 **Requirements Reference:** [docs/requirements.md](./requirements.md)
 **Research Reference:** [docs/research.md](./research.md)
 
@@ -580,11 +580,11 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ---
 
-### Milestone 5: Character System
+### Milestone 5: Character System ✅
 
 **Goal:** Users create Character Cards, apply them to generations, and get consistent character identity across scenes using mflux Redux adapter.
 
-> **Implementation note (M5 status):** Tasks 5.2–5.4 are complete. Character CRUD, avatar row UI, creation dialog, strength control, and pipeline metadata wiring all shipped. Task 5.1 has been revised from InstantID/PhotoMaker/PuLID (not available in mflux) to use the **Redux adapter** which is natively supported. Task 5.5 (Redux integration) is the remaining work.
+> **Implementation note (M5 status):** All tasks complete. Character CRUD, avatar row UI, creation dialog, strength control, Redux pipeline integration, adapter management system (Model Manager "Adapters" tab + inline download), auth/license/timeout fixes all shipped. Identity preservation is limited by Redux's holistic approach (style + content, not face-specific) — see task 5.7 for research and future opportunities.
 
 #### Tasks
 
@@ -646,54 +646,56 @@ Wire `Flux1Redux` from mflux into the generation pipeline so character reference
   - All 16 frontend + 35 Python tests passing
   - TypeScript and Rust compile clean
 
-**5.6 — Adapter management system** 🔲 NEW
+**5.6 — Adapter management system** ✅
 
 The Redux adapter (`FLUX.1-Redux-dev`) is a gated HuggingFace model that must be downloaded before character generation works. This task adds a proper download/management UX — both a dedicated "Adapters" tab in the Model Manager and an inline download prompt in the character section.
 
-- **5.6.1 — Python: Adapter registry and manager**
-  - Create `AdapterEntry` dataclass (id, name, type, hf_repo_id, compatible_models, file_size_bytes, license, description, source_url)
-  - `ADAPTER_REGISTRY` with Redux entry (`black-forest-labs/FLUX.1-Redux-dev`)
-  - `AdapterManager` class: `get_all_adapters()`, `download_adapter()`, `delete_adapter()`, `is_adapter_downloaded()`
-  - Download uses same `snapshot_download` + HF token pattern as ModelManager
-  - Check if adapter is already cached in HF hub (`~/.cache/huggingface/hub/models--black-forest-labs--FLUX.1-Redux-dev/`)
-  - Same AUTH_REQUIRED / LICENSE_REQUIRED error handling as base model downloads
+- **5.6.1 — Python: Adapter registry and manager** ✅
+  - `AdapterEntry` dataclass + `ADAPTER_REGISTRY` with Redux entry in `python/src/imagen_heap/adapters/`
+  - `AdapterManager` class: download, delete, status check via HF cache detection
+  - Shares HF token with ModelManager (`~/.imagen-heap/models/.hf_token`)
+  - AUTH_REQUIRED vs LICENSE_REQUIRED error classification (token present + gated = license, no token + gated = auth)
+
+- **5.6.2 — Python: RPC handlers for adapters** ✅
+  - `get_adapters`, `download_adapter`, `delete_adapter` handlers registered in main.py
   - Download progress notifications via `adapter_download_progress` events
 
-- **5.6.2 — Python: RPC handlers for adapters**
-  - `get_adapters` — returns adapter list with download status
-  - `download_adapter` — starts adapter download with progress
-  - `delete_adapter` — removes adapter cache
-  - Register handlers in main.py
+- **5.6.3 — Rust: Tauri commands for adapters** ✅
+  - 3 Tauri commands + `AdapterDownloadProgressEvent` struct + notification forwarding
+  - generate_image timeout increased from 600s → 1800s (30 min) to accommodate Redux generation
 
-- **5.6.3 — Rust: Tauri commands for adapters**
-  - `get_adapters`, `download_adapter` (async, 1hr timeout), `delete_adapter`
-  - Register in `.invoke_handler()` chain
+- **5.6.4 — Frontend: Adapter store and API wrappers** ✅
+  - Zustand `useAdapterStore` with download tracking and `isReduxAvailable()` computed check
+  - `useAdapterDownloadProgress` hook for backend event listening
+  - Tauri API wrappers: `getAdapters()`, `downloadAdapter()`, `deleteAdapter()`
 
-- **5.6.4 — Frontend: Adapter store and API wrappers**
-  - TypeScript types: `AdapterInfo` (mirrors AdapterEntry + status)
-  - Tauri wrappers: `getAdapters()`, `downloadAdapter()`, `deleteAdapter()`
-  - Zustand `useAdapterStore`: adapters[], downloadingAdapters, downloadProgress, downloadErrors, isReduxAvailable computed
-  - Listen for `backend:adapter_download_progress` events
+- **5.6.5 — Frontend: Model Manager "Adapters" tab** ✅
+  - Tab bar at top of ModelManager: "Models" | "Adapters" (with `initialTab` prop for deep-linking)
+  - AdapterCard component with full download/delete/auth/license error handling
+  - Shared HF token input between tabs
 
-- **5.6.5 — Frontend: Model Manager "Adapters" tab**
-  - Add tab bar at top of ModelManager: "Models" | "Adapters"
-  - Adapters tab reuses ModelCard pattern (name, type badge, size, license, compatible models, download/delete)
-  - Same HF token input panel (shared between tabs)
-  - Same error display (AUTH_REQUIRED, LICENSE_REQUIRED)
+- **5.6.6 — Frontend: Inline Redux download in character section** ✅
+  - CharacterStrengthControl shows amber callout when Redux not downloaded
+  - One-click download button + inline progress bar + percentage
+  - License-required errors show clickable HuggingFace link for license acceptance
+  - On completion: callout disappears, generate becomes available
 
-- **5.6.6 — Frontend: Inline Redux download in character section**
-  - In CharacterStrengthControl, when character selected but Redux not downloaded:
-    - Show amber callout: "Redux adapter required for character generation"
-    - One-click "Download" button that starts download inline
-    - Progress bar + percentage shown in-place
-    - On completion: callout disappears, generate becomes available
-  - Uses adapter store's `isReduxAvailable` for state check
+- **5.6.7 — MLXProvider: gated repo error handling** ✅
+  - `_ensure_redux_loaded()` catches `GatedRepoError` → returns `ADAPTER_NOT_AVAILABLE` structured error
+  - Progress callback error logging added (try/except in ProgressReporter.call_in_loop)
 
-- **5.6.7 — MLXProvider: use pre-downloaded adapter path**
-  - When Redux is downloaded via AdapterManager, pass the cached path to `Flux1Redux` instead of letting it re-download
-  - Catch GatedRepoError in `_ensure_redux_loaded()` and return a structured error the frontend can handle
+**Deliverable:** ✅ Model Manager has "Models" and "Adapters" tabs. Redux adapter downloadable with full auth/license/progress UX. Character section shows inline download prompt when Redux is missing. Character generation works end-to-end once adapter is downloaded.
 
-**Deliverable:** Model Manager has "Models" and "Adapters" tabs. Redux adapter is downloadable from Adapters tab with full auth/license/progress UX. Character section shows inline download prompt when Redux is missing. Character generation works seamlessly once adapter is downloaded.
+**5.7 — Identity preservation research & tuning** 🔲
+
+Investigation into improving character resemblance beyond Redux's holistic approach.
+
+- **Current limitation:** Redux embeds reference images as general visual context (style + content + composition), NOT facial identity. Generated images have similar aesthetic but don't precisely match facial features.
+- **Confirmed not available in mflux:** IP-Adapter, InstantID, PhotoMaker, PuLID (all PyTorch/CUDA-only)
+- **mflux variants explored:** `concept_attention` (heatmap/concept extraction, not identity), `kontext` (in-context editing, potential complement), `in_context` (fill/dev variants)
+- **Best current tuning:** Strength 0.85–0.95, 2–3 clear front-facing photos, describe facial features in prompt, use FLUX.1-dev (not schnell)
+- **Future opportunity:** Monitor mflux upstream for native identity adapters. When PuLID/IP-Adapter support lands, integrate as additional adapter types using the same Adapters tab pattern from M5.6.
+- See `docs/research.md` §8 for full analysis
 
 ---
 

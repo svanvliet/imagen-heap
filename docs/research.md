@@ -334,3 +334,71 @@ image.save("output.png")
 - mflux FLUX.1 README (Redux docs): https://github.com/filipstrand/mflux/blob/main/src/mflux/models/flux/README.md
 - XLabs-AI FLUX IP-Adapter (not used, ComfyUI-only): https://huggingface.co/XLabs-AI/flux-ip-adapter
 - InstantX FLUX IP-Adapter (not used, ComfyUI-only): https://comfyui-wiki.com/en/news/2024-11-22-instantx-flux-ipadapter-release
+
+---
+
+## 8b) Identity Adapter Follow-up — Redux Limitations & mflux Landscape (March 2026)
+
+### Context
+
+After completing M5.5 (Redux integration) and M5.6 (adapter management), user testing revealed that Redux-generated images have a similar aesthetic/style to reference images but do NOT preserve precise facial identity. This section documents the investigation into improving character resemblance.
+
+### Redux Limitations — Why Faces Don't Match
+
+Redux operates on **holistic image embeddings** via a dedicated encoder that joins with T5 text encodings in the attention layers. This means:
+
+- ✅ Color palette, clothing style, hair color, and general composition carry over well
+- ✅ Overall "feel" and aesthetic of the reference images influence the output
+- ❌ Facial geometry, eye shape, nose structure, and other fine identity features are NOT preserved
+- ❌ Redux does not extract or lock in specific facial landmarks — it treats the entire image as a style/content reference
+
+This is fundamentally different from face-identity adapters (InstantID, PuLID, IP-Adapter-FaceID) which use dedicated face encoders (e.g., InsightFace/ArcFace) to extract and inject facial identity embeddings.
+
+### Best Tuning Tips for Redux
+
+- **Strength 0.85–0.95** — push as high as possible to maximize reference influence
+- **2–3 clear, front-facing photos** — consistent lighting, minimal background clutter
+- **Describe facial features in prompt** — "a man with brown hair, blue eyes, short beard, strong jawline"
+- **Use FLUX.1-dev** (not schnell) — Redux requires the dev model
+- **Fewer reference images can be better** — 2–3 high-quality images outperform 5+ varied ones
+
+### mflux Variant Investigation (v0.16.8–0.16.9)
+
+Explored all mflux model variants for potential identity preservation:
+
+| Variant | Purpose | Identity Use? |
+|---------|---------|---------------|
+| `txt2img` (Flux1) | Standard text-to-image | No — our current pipeline |
+| `redux` (Flux1Redux) | Image variation/influence | Partial — holistic style, not face-specific |
+| `kontext` (Flux1Kontext) | In-context editing | Potential complement — edit Redux output to refine |
+| `in_context` | Dev/fill in-context variants | No — editing-focused |
+| `controlnet` | Canny edge conditioning | No — structure control, not identity |
+| `depth` | Depth map conditioning | No — spatial layout control |
+| `fill` | Inpaint/outpaint | No — mask-based editing |
+| `concept_attention` | Concept heatmap extraction | No — analysis tool, not generation identity |
+
+**Key finding:** None of the current mflux variants provide face-specific identity preservation.
+
+### What Would Actually Solve This
+
+True facial identity adapters that would solve this problem:
+
+1. **IP-Adapter-FaceID** — Uses InsightFace embeddings for face-specific conditioning
+2. **PuLID** — Pure and Lightning ID customization, has experimental FLUX support via Nunchaku/ComfyUI
+3. **PhotoMaker V2** — Identity customization without full LoRA training
+4. **InstantID** — Single-image identity-preserving adapter
+
+**Status in mflux:** None of these are available as of v0.16.9 (latest). The mflux changelog (0.15.0–0.16.9) shows focus on FLUX.2, Z-Image, FIBO, SeedVR2, LoRA training, and quantization improvements — no identity adapter work.
+
+### Decision
+
+- **Short term:** Document Redux limitations and tuning tips. Redux is the best available option in mflux for character influence.
+- **Medium term:** Monitor mflux upstream for IP-Adapter/PuLID support. The adapter management system (M5.6) is designed to accommodate new adapter types.
+- **Alternative path:** Consider adding a non-mflux adapter pathway (e.g., via diffusers/PyTorch MPS) as a secondary provider — this would be a significant architecture change tracked separately.
+
+### Sources
+
+- mflux changelog: https://github.com/filipstrand/mflux/blob/main/CHANGELOG.md
+- mflux variants source: `mflux/models/flux/variants/` (checked all subdirectories)
+- PuLID-FLUX (ComfyUI): https://github.com/ToTheBeginning/PuLID
+- IP-Adapter (HuggingFace): https://huggingface.co/h94/IP-Adapter
