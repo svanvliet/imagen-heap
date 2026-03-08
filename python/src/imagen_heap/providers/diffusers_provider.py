@@ -515,10 +515,15 @@ class DiffusersProvider(RuntimeProvider):
         self._ensure_faceid_loaded()
 
         # 4. Set CLIP embeds on the FaceID PlusV2 projection module
+        #    Must match device/dtype of the projection layer weights at forward time.
+        #    With cpu_offload, the UNet runs on MPS during inference.
         proj_layers = self._pipe.unet.encoder_hid_proj.image_projection_layers
-        proj_layers[0].clip_embeds = clip_embeds.to(dtype=torch.float16)
+        proj_layers[0].clip_embeds = clip_embeds.to(device=self._device, dtype=torch.float16)
         proj_layers[0].shortcut = True  # Enable ID shortcut for better identity preservation
-        logger.debug("Set CLIP embeds on projection layer: %s", clip_embeds.shape)
+        logger.debug("Set CLIP embeds on projection layer: %s (device=%s)", clip_embeds.shape, self._device)
+
+        # Also ensure face_embed is on the right device
+        face_embed = face_embed.to(device=self._device)
 
         # 5. Set identity strength
         self._pipe.set_ip_adapter_scale(identity_strength)
