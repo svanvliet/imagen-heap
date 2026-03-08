@@ -160,10 +160,17 @@ def create_server() -> RpcServer:
             else:
                 logger.warning("Character '%s' has no valid reference images, falling back to standard generation", config.character_id)
 
-        # Auto-load model if provider supports it
+        # Auto-load model if provider supports it (skip SDXL — routed to DiffusersProvider)
         if hasattr(provider, 'load_model') and hasattr(provider, '_loaded_model'):
             needed = config.model_id
-            if provider._loaded_model != needed:
+            is_sdxl_model = False
+            try:
+                from imagen_heap.models import get_model_by_id as _get_model
+                _entry = _get_model(needed)
+                is_sdxl_model = _entry is not None and _entry.architecture == "sdxl"
+            except Exception:
+                is_sdxl_model = False
+            if not is_sdxl_model and provider._loaded_model != needed:
                 logger.info("Auto-loading model %s for generation", needed)
                 provider.load_model(needed)
 
