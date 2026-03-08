@@ -26,7 +26,7 @@ const REDUX_COMPATIBLE_PREFIXES = ["flux-dev"];
 function getRequiredAdapterIds(adapterType: string): string[] {
   switch (adapterType) {
     case "faceid":
-      return ["sdxl-base-1.0", "ip-adapter-faceid-plusv2-sdxl", "insightface-buffalo-l"];
+      return ["sdxl-base-1.0", "ip-adapter-faceid-plusv2-sdxl"];
     case "ip-adapter":
       return ["flux-ip-adapter-v2", "clip-vit-large-patch14"];
     case "redux":

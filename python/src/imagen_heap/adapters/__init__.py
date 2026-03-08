@@ -93,18 +93,6 @@ ADAPTER_REGISTRY: list[AdapterEntry] = [
         source_url="https://huggingface.co/h94/IP-Adapter-FaceID",
         requires_provider="diffusers",
     ),
-    AdapterEntry(
-        id="insightface-buffalo-l",
-        name="InsightFace buffalo_l (Face Detection)",
-        adapter_type="face_model",
-        hf_repo_id="deepinsight/insightface",
-        compatible_models=["sdxl"],
-        file_size_bytes=300_000_000,  # ~300 MB
-        license_spdx="non-commercial",
-        description="InsightFace face analysis model. Detects faces and extracts ArcFace embeddings for FaceID. Auto-downloads on first use.",
-        source_url="https://github.com/deepinsight/insightface",
-        requires_provider="diffusers",
-    ),
 ]
 
 
