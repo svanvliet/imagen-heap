@@ -3,8 +3,8 @@
  * Create mode: empty form, creates new character on submit.
  * Edit mode: pre-populated from existing character, saves changes incrementally.
  */
-import { useState, useRef, useCallback } from "react";
-import { X, Upload, ImagePlus, Trash2, Sparkles, Pencil } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { X, Upload, ImagePlus, Trash2, Sparkles, Pencil, Cpu } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCharacterStore } from "@/stores/characters";
@@ -33,8 +33,17 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
   );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adapterType, setAdapterType] = useState<"auto" | "redux" | "ip-adapter">(
+    (character?.adapter_type as "auto" | "redux" | "ip-adapter") ?? "auto",
+  );
+  const [providers, setProviders] = useState<{ mlx: boolean; diffusers: boolean }>({ mlx: true, diffusers: false });
 
   const nameRef = useRef<HTMLInputElement>(null);
+
+  // Check which providers are available
+  useEffect(() => {
+    api.getAvailableProviders().then(setProviders).catch(() => {});
+  }, []);
 
   // Track which images were removed (by original index) and added (local paths) in edit mode
   const [removedIndices, setRemovedIndices] = useState<Set<number>>(new Set());
@@ -127,6 +136,8 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
         if (name.trim() !== character.name) updates.name = name.trim();
         if (description.trim() !== character.description)
           updates.description = description.trim();
+        if (adapterType !== (character.adapter_type ?? "auto"))
+          updates.adapter_type = adapterType;
         if (Object.keys(updates).length > 0) {
           await updateCharacter(character.id, updates);
         }
@@ -172,6 +183,7 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
   const hasChanges = isEditMode
     ? name.trim() !== character?.name ||
       description.trim() !== character?.description ||
+      adapterType !== (character?.adapter_type ?? "auto") ||
       removedIndices.size > 0 ||
       addedPaths.length > 0
     : true;
@@ -243,6 +255,47 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
               rows={2}
               className="w-full px-3 py-2 bg-bg-primary border border-border-default rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 resize-none"
             />
+          </div>
+
+          {/* Adapter Type */}
+          <div>
+            <label className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5 block">
+              <span className="flex items-center gap-1.5">
+                <Cpu size={12} />
+                Identity Method
+              </span>
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { value: "auto" as const, label: "Auto", desc: "Best available" },
+                { value: "redux" as const, label: "Redux", desc: "MLX · fast" },
+                { value: "ip-adapter" as const, label: "IP-Adapter", desc: "Diffusers · precise" },
+              ]).map((opt) => {
+                const disabled = opt.value === "ip-adapter" && !providers.diffusers;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => !disabled && setAdapterType(opt.value)}
+                    disabled={disabled}
+                    className={cn(
+                      "px-2 py-2 rounded-lg border text-left transition-all",
+                      adapterType === opt.value
+                        ? "border-accent bg-accent-muted/30 ring-1 ring-accent/30"
+                        : "border-border-default hover:border-accent/50",
+                      disabled && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    <span className="text-xs font-medium text-text-primary block">{opt.label}</span>
+                    <span className="text-[10px] text-text-secondary">{opt.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {adapterType === "ip-adapter" && !providers.diffusers && (
+              <p className="text-[10px] text-amber-400 mt-1">
+                IP-Adapter requires PyTorch + diffusers. Install deps to enable.
+              </p>
+            )}
           </div>
 
           {/* Reference Images */}

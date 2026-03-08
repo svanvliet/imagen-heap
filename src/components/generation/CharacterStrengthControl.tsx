@@ -149,15 +149,24 @@ export function CharacterStrengthControl() {
         </div>
       )}
 
-      {/* Character info */}
+      {/* Character info + provider badge */}
       <div className="flex items-center justify-between">
         <span className="text-xs text-text-secondary">
           {character.reference_images.length} reference{" "}
           {character.reference_images.length === 1 ? "image" : "images"}
         </span>
         <span className="text-[10px] text-text-secondary/60 uppercase tracking-wider flex items-center gap-1">
-          {reduxAvailable && <Check size={9} className="text-success" />}
-          redux
+          {character.adapter_type === "ip-adapter" ? (
+            <>
+              <span className="text-purple-400">⬡</span>
+              ip-adapter
+            </>
+          ) : (
+            <>
+              {reduxAvailable && <Check size={9} className="text-success" />}
+              redux
+            </>
+          )}
         </span>
       </div>
 
