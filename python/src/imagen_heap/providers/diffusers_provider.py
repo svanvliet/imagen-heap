@@ -378,6 +378,7 @@ class DiffusersProvider(RuntimeProvider):
                 FACEID_REPO,
                 subfolder="",
                 weight_name=FACEID_WEIGHT,
+                image_encoder_folder=None,  # FaceID uses InsightFace, not CLIP
             )
 
             # Load FaceID LoRA for better quality
