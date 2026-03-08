@@ -198,6 +198,7 @@ class PipelineOrchestrator:
                         height=config.height,
                         reference_image_paths=reference_image_paths,
                         identity_strength=config.character_strength,
+                        model_id=config.model_id,
                         progress_callback=wrapped_progress,
                     )
                 elif provider_choice == "diffusers" and self.diffusers_provider is not None:
@@ -248,11 +249,19 @@ class PipelineOrchestrator:
                     )
             else:
                 # Standard text-to-image (no character)
-                is_sdxl = "sdxl" in config.model_id
+                # Check if the selected model is SDXL architecture
+                is_sdxl = False
+                try:
+                    from imagen_heap.models import get_model_by_id
+                    model_entry = get_model_by_id(config.model_id)
+                    is_sdxl = model_entry is not None and model_entry.architecture == "sdxl"
+                except Exception:
+                    is_sdxl = "sdxl" in config.model_id or "realvis" in config.model_id or "juggernaut" in config.model_id
+
                 if is_sdxl and self.diffusers_provider is not None:
-                    # SDXL models use DiffusersProvider
+                    # SDXL-architecture models use DiffusersProvider
                     inference_provider = "diffusers"
-                    self.diffusers_provider._load_sdxl_pipeline()
+                    self.diffusers_provider._load_sdxl_pipeline(config.model_id)
                     result = self.diffusers_provider.text_to_image(
                         prompt=config.prompt,
                         negative_prompt=config.negative_prompt,

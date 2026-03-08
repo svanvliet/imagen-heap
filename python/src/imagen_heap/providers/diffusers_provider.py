@@ -320,29 +320,43 @@ class DiffusersProvider(RuntimeProvider):
         except ImportError:
             return False
 
-    def _load_sdxl_pipeline(self) -> None:
-        """Load the SDXL base model pipeline, unloading FLUX if active."""
-        if self._active_pipeline == "sdxl" and self._pipe is not None:
+    def _load_sdxl_pipeline(self, model_id: str = "sdxl-base-1.0") -> None:
+        """Load an SDXL-architecture pipeline, unloading FLUX if active.
+
+        Supports any SDXL fine-tune (RealVisXL, Juggernaut, etc.) by resolving
+        the model_id to a HuggingFace repo via the model registry.
+        """
+        if self._active_pipeline == "sdxl" and self._pipe is not None and self._loaded_model == model_id:
             return
 
         if self._pipe is not None:
-            logger.info("Unloading FLUX pipeline to make room for SDXL")
+            logger.info("Unloading %s pipeline to load SDXL model %s", self._active_pipeline, model_id)
             self.unload_model()
 
         from diffusers import StableDiffusionXLPipeline
 
+        # Resolve model_id to HF repo — check model registry first
+        repo = SDXL_BASE_REPO  # default fallback
+        try:
+            from imagen_heap.models import get_model_by_id
+            entry = get_model_by_id(model_id)
+            if entry and entry.hf_repo_id:
+                repo = entry.hf_repo_id
+        except Exception:
+            pass
+
         start = time.time()
         token = self._get_hf_token()
-        logger.info("Loading SDXL pipeline from %s", SDXL_BASE_REPO)
+        logger.info("Loading SDXL pipeline from %s (model_id=%s)", repo, model_id)
 
         self._pipe = StableDiffusionXLPipeline.from_pretrained(
-            SDXL_BASE_REPO,
+            repo,
             torch_dtype=self._torch.float16,  # SDXL works best with float16
             token=token,
         )
         self._pipe.enable_model_cpu_offload()
         self._active_pipeline = "sdxl"
-        self._loaded_model = "sdxl-base-1.0"
+        self._loaded_model = model_id
         self._faceid_loaded = False
 
         elapsed = time.time() - start
@@ -409,6 +423,7 @@ class DiffusersProvider(RuntimeProvider):
         height: int,
         reference_image_paths: list[str],
         identity_strength: float = 0.7,
+        model_id: str = "sdxl-base-1.0",
         progress_callback: ProgressCallback | None = None,
     ):
         """Generate image with SDXL + FaceID PlusV2 face identity conditioning.
@@ -430,7 +445,7 @@ class DiffusersProvider(RuntimeProvider):
         face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0).unsqueeze(0)
 
         # Load SDXL pipeline + FaceID adapter
-        self._load_sdxl_pipeline()
+        self._load_sdxl_pipeline(model_id)
         self._ensure_faceid_loaded()
 
         # Set identity strength

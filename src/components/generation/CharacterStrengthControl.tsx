@@ -74,7 +74,7 @@ export function CharacterStrengthControl() {
   // FaceID uses SDXL — check if SDXL model is available and selected
   const isFaceIdType = effectiveType === "faceid";
   const sdxlModel = models.find((m) => m.architecture === "sdxl" && m.status === "downloaded");
-  const isSdxlSelected = selectedModelId?.startsWith("sdxl") ?? false;
+  const isSdxlSelected = models.find((m) => m.id === selectedModelId)?.architecture === "sdxl";
   const needsSdxlSwitch = isFaceIdType && !isSdxlSelected;
 
   const isModelCompatible = isFaceIdType
