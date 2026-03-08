@@ -356,8 +356,8 @@
 | M5c-3: Orchestrator routing for FaceID | ✅ |
 | M5c-4: Adapter registry entries | ✅ |
 | M5c-5: FaceID adapter type UI | ✅ |
-| M5c-6: Adapter comparison UX | 🔲 Pending |
-| M5c-7: Testing and validation | 🔲 Pending — needs user end-to-end test |
+| M5c-6: Adapter comparison UX | ✅ |
+| M5c-7: Testing and validation | 🔲 Pending — needs user end-to-end test with SDXL model download |
 
 ### Test Counts
 - Python: 55 tests passing (14 new FaceID tests)

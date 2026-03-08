@@ -804,7 +804,7 @@ The XLabs IP-Adapter v2 for FLUX uses CLIP embeddings (semantic/style features),
 
 #### Tasks
 
-**5c.1 — Python: InsightFace integration**
+**5c.1 — Python: InsightFace integration** ✅
 
 Install InsightFace and ONNX Runtime. Create a face embedding extraction module.
 
@@ -820,7 +820,7 @@ Install InsightFace and ONNX Runtime. Create a face embedding extraction module.
   - Multiple faces → use largest face (closest to camera)
 - Unit tests: face detection, embedding shape, no-face error case
 
-**5c.2 — Python: SDXL FaceID PlusV2 provider support**
+**5c.2 — Python: SDXL FaceID PlusV2 provider support** ✅
 
 Extend DiffusersProvider to support StableDiffusionXLPipeline with FaceID PlusV2 adapter.
 
@@ -843,7 +843,7 @@ Extend DiffusersProvider to support StableDiffusionXLPipeline with FaceID PlusV2
   - SDXL generates at 1024x1024 native resolution
 - Unit tests: pipeline loading, adapter loading, embedding passthrough
 
-**5c.3 — Python: Orchestrator routing for FaceID**
+**5c.3 — Python: Orchestrator routing for FaceID** ✅
 
 Update PipelineOrchestrator to route `adapter_type="faceid"` to SDXL FaceID.
 
@@ -855,7 +855,7 @@ Update PipelineOrchestrator to route `adapter_type="faceid"` to SDXL FaceID.
 - Graceful fallback: if InsightFace not installed, faceid not available
 - Unit tests: routing tests for faceid adapter type
 
-**5c.4 — Adapter registry: SDXL FaceID entries**
+**5c.4 — Adapter registry: SDXL FaceID entries** ✅
 
 Add SDXL FaceID downloadable entries to adapter management.
 
@@ -867,7 +867,7 @@ Add SDXL FaceID downloadable entries to adapter management.
 - Adapter download flow handles HuggingFace repos and ONNX model downloads
 - Estimated total new disk space: ~8.8GB
 
-**5c.5 — Frontend: FaceID adapter type option**
+**5c.5 — Frontend: FaceID adapter type option** ✅
 
 Add FaceID as a fourth Identity Method option in the character dialog.
 
@@ -882,7 +882,7 @@ Add FaceID as a fourth Identity Method option in the character dialog.
 - Adapter download prompt: show all required adapters with total size (~8.8GB)
 - Resolution note: output is 1024x1024 from SDXL (same as FLUX)
 
-**5c.6 — Frontend: Adapter comparison UX**
+**5c.6 — Frontend: Adapter comparison UX** ✅
 
 Help users understand the three adapter types with clear, visual comparison.
 
