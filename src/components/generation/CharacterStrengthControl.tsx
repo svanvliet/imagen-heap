@@ -77,25 +77,41 @@ export function CharacterStrengthControl() {
     (id) => !adapters.some((a) => a.id === id && a.status === "downloaded"),
   );
   const allAdaptersReady = missingAdapterIds.length === 0;
-  // The primary adapter to prompt for download (first missing one)
-  const primaryMissing = missingAdapterIds[0] ?? null;
-  const primaryMissingInfo = primaryMissing
-    ? adapters.find((a) => a.id === primaryMissing)
-    : null;
 
-  const isDownloading = primaryMissing ? downloadingAdapters.has(primaryMissing) : false;
-  const dlProgress = primaryMissing ? adapterProgress.get(primaryMissing) : undefined;
-  const dlError = primaryMissing ? adapterErrors.get(primaryMissing) : undefined;
+  // Compute total missing download size for all required adapters
+  const missingAdaptersInfo = missingAdapterIds
+    .map((id) => adapters.find((a) => a.id === id))
+    .filter(Boolean);
+  const totalMissingBytes = missingAdaptersInfo.reduce(
+    (sum, a) => sum + (a?.file_size_bytes ?? 0), 0,
+  );
+
+  // Track download state across ALL downloading adapters (not just first)
+  const isDownloading = missingAdapterIds.some((id) => downloadingAdapters.has(id));
+  const currentlyDownloadingId = missingAdapterIds.find((id) => downloadingAdapters.has(id)) ?? null;
+  const dlProgress = currentlyDownloadingId ? adapterProgress.get(currentlyDownloadingId) : undefined;
+  const dlError = missingAdapterIds
+    .map((id) => adapterErrors.get(id))
+    .find(Boolean) ?? undefined;
+
+  // Progress: show current adapter download progress, capped at 99% until RPC returns
   const dlPct = dlProgress && dlProgress.total_bytes > 0
-    ? Math.round((dlProgress.bytes_downloaded / dlProgress.total_bytes) * 100)
+    ? Math.min(99, Math.round((dlProgress.bytes_downloaded / dlProgress.total_bytes) * 100))
     : null;
 
-  const handleDownload = () => {
-    if (!primaryMissing) return;
-    useAdapterStore.getState().clearDownloadError(primaryMissing);
-    downloadAdapterAction(primaryMissing).catch((err) => {
-      log.error("Adapter download failed:", err);
-    });
+  const handleDownloadAll = async () => {
+    for (const id of missingAdapterIds) {
+      useAdapterStore.getState().clearDownloadError(id);
+    }
+    // Download all missing adapters sequentially
+    for (const id of missingAdapterIds) {
+      try {
+        await downloadAdapterAction(id);
+      } catch (err) {
+        log.error("Adapter download failed:", id, err);
+        break; // Stop on first failure
+      }
+    }
   };
 
   const closestPreset = STRENGTH_PRESETS.reduce((prev, curr) =>
@@ -105,9 +121,15 @@ export function CharacterStrengthControl() {
   );
 
   const friendlyLabel = adapterLabel(effectiveType);
-  const sizeLabel = primaryMissingInfo
-    ? ` (~${formatBytes(primaryMissingInfo.file_size_bytes)})`
+  const sizeLabel = totalMissingBytes > 0
+    ? ` (~${formatBytes(totalMissingBytes)} total)`
     : "";
+  const currentDownloadName = currentlyDownloadingId
+    ? adapters.find((a) => a.id === currentlyDownloadingId)?.name ?? currentlyDownloadingId
+    : "";
+
+  // FaceID uses SDXL not FLUX — model compatibility check adapts per adapter type
+  const isFaceIdType = effectiveType === "faceid";
 
   return (
     <div className="space-y-2 mt-2">
@@ -115,8 +137,22 @@ export function CharacterStrengthControl() {
       {!adaptersLoading && adapters.length > 0 && !allAdaptersReady && !isDownloading && (
         <div className="px-2.5 py-2 bg-accent/5 border border-accent/20 rounded-md space-y-2">
           <p className="text-[10px] text-text-secondary leading-tight">
-            Character generation requires the <span className="text-text-primary font-medium">{friendlyLabel}</span>{sizeLabel}.
+            {missingAdapterIds.length === 1 ? (
+              <>Character generation requires the <span className="text-text-primary font-medium">{friendlyLabel}</span>{sizeLabel}.</>
+            ) : (
+              <>{missingAdapterIds.length} components needed for <span className="text-text-primary font-medium">{friendlyLabel}</span>{sizeLabel}.</>
+            )}
           </p>
+          {missingAdapterIds.length > 1 && (
+            <ul className="text-[9px] text-text-muted space-y-0.5 ml-2">
+              {missingAdaptersInfo.map((a) => a && (
+                <li key={a.id} className="flex justify-between">
+                  <span>{a.name}</span>
+                  <span className="text-text-muted/60">{formatBytes(a.file_size_bytes)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           {dlError ? (
             <div className="space-y-1.5">
               <p className="text-[10px] text-amber-400 leading-tight">
@@ -124,7 +160,7 @@ export function CharacterStrengthControl() {
                   <>
                     Accept the license at{" "}
                     <a
-                      href={primaryMissingInfo?.source_url ?? `https://huggingface.co/${primaryMissingInfo?.hf_repo_id ?? ""}`}
+                      href={missingAdaptersInfo[0]?.source_url ?? `https://huggingface.co/${missingAdaptersInfo[0]?.hf_repo_id ?? ""}`}
                       target="_blank"
                       rel="noopener"
                       className="underline hover:text-amber-300"
@@ -140,7 +176,7 @@ export function CharacterStrengthControl() {
                 )}
               </p>
               <button
-                onClick={handleDownload}
+                onClick={handleDownloadAll}
                 className="w-full py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[10px] font-medium transition-colors flex items-center justify-center gap-1.5 border border-amber-500/20"
               >
                 <Download size={10} /> Retry Download
@@ -148,22 +184,22 @@ export function CharacterStrengthControl() {
             </div>
           ) : (
             <button
-              onClick={handleDownload}
+              onClick={handleDownloadAll}
               className="w-full py-1.5 rounded-md bg-accent hover:bg-accent-hover text-white text-[10px] font-medium transition-colors flex items-center justify-center gap-1.5"
             >
-              <Download size={10} /> Download {friendlyLabel}
+              <Download size={10} /> Download All ({formatBytes(totalMissingBytes)})
             </button>
           )}
         </div>
       )}
 
       {/* Adapter download in progress */}
-      {isDownloading && primaryMissing && (
+      {isDownloading && currentlyDownloadingId && (
         <div className="px-2.5 py-2 bg-accent/5 border border-accent/20 rounded-md space-y-1.5">
           <div className="flex items-center gap-1.5">
             <Loader2 size={10} className="text-accent animate-spin" />
             <span className="text-[10px] text-text-secondary">
-              Downloading {friendlyLabel}{dlPct !== null ? ` · ${dlPct}%` : "…"}
+              Downloading {currentDownloadName}{dlPct !== null ? ` · ${dlPct}%` : "…"}
             </span>
           </div>
           <div className="h-1 bg-bg-tertiary rounded-full overflow-hidden">
@@ -183,12 +219,20 @@ export function CharacterStrengthControl() {
         </div>
       )}
 
-      {/* Model compatibility warning */}
-      {allAdaptersReady && !isModelCompatible && (
+      {/* Model compatibility warning — FaceID uses SDXL (no FLUX needed), others need FLUX-dev */}
+      {allAdaptersReady && !isFaceIdType && !isModelCompatible && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
           <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
           <span className="text-[10px] text-amber-300 leading-tight">
             Character mode requires a FLUX.1-dev model. Switch in Model settings above.
+          </span>
+        </div>
+      )}
+      {allAdaptersReady && isFaceIdType && (
+        <div className="flex items-start gap-1.5 px-2 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-md">
+          <Check size={12} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+          <span className="text-[10px] text-emerald-300 leading-tight">
+            FaceID uses SDXL — the selected FLUX model above is ignored for this character.
           </span>
         </div>
       )}

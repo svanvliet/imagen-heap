@@ -92,9 +92,10 @@ class AdapterManager:
                 def _monitor_progress() -> None:
                     while not stop_monitor.is_set():
                         size = self._dir_size_fast(cache_dir)
-                        # Clamp to total_bytes - 1 while still downloading
-                        # to prevent showing 100% before snapshot_download returns
-                        reported = min(size, total_bytes - 1) if not stop_monitor.is_set() else total_bytes
+                        # Cap at 95% while still downloading — frontend will show 99%
+                        # only after snapshot_download returns and we send true 100%
+                        cap = int(total_bytes * 0.95)
+                        reported = min(size, cap)
                         progress_callback(adapter_id, reported, total_bytes)
                         stop_monitor.wait(1.5)
 
