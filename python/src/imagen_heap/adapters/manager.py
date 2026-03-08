@@ -92,16 +92,31 @@ class AdapterManager:
                 def _monitor_progress() -> None:
                     while not stop_monitor.is_set():
                         size = self._dir_size_fast(cache_dir)
-                        progress_callback(adapter_id, min(size, total_bytes), total_bytes)
+                        # Clamp to total_bytes - 1 while still downloading
+                        # to prevent showing 100% before snapshot_download returns
+                        reported = min(size, total_bytes - 1) if not stop_monitor.is_set() else total_bytes
+                        progress_callback(adapter_id, reported, total_bytes)
                         stop_monitor.wait(1.5)
 
                 monitor = threading.Thread(target=_monitor_progress, daemon=True)
                 monitor.start()
 
+            # For large model repos, only download safetensors + config files
+            # to avoid pulling flax, onnx, and openvino variants
+            allow_patterns = None
+            if entry.adapter_type == "model":
+                allow_patterns = [
+                    "*.safetensors",
+                    "*.json",
+                    "*.txt",
+                    "*.model",
+                ]
+
             snapshot_download(
                 repo_id=entry.hf_repo_id,
                 repo_type="model",
                 token=hf_token or None,
+                allow_patterns=allow_patterns,
             )
 
             stop_monitor.set()

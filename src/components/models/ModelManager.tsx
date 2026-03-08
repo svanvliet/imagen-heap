@@ -274,7 +274,7 @@ export function ModelManager({ onClose, initialTab = "models" }: ModelManagerPro
                 No adapters available yet.
               </div>
             ) : (
-              adapters.map((adapter) => (
+              adapters.filter(a => a.adapter_type !== "model" && a.adapter_type !== "face_model").map((adapter) => (
                 <AdapterCard
                   key={adapter.id}
                   adapter={adapter}
