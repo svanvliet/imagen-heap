@@ -41,6 +41,8 @@ class GenerationResult:
     config: GenerationConfig
     generation_time_ms: int
     created_at: str
+    inference_provider: str = "mlx"   # "mlx", "diffusers", "stub"
+    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -65,6 +67,8 @@ class GenerationResult:
             },
             "generation_time_ms": self.generation_time_ms,
             "created_at": self.created_at,
+            "inference_provider": self.inference_provider,
+            "resolved_adapter": self.resolved_adapter,
         }
 
 
@@ -162,11 +166,16 @@ class PipelineOrchestrator:
                 and reference_image_paths
             )
 
+            inference_provider = "mlx"
+            resolved_adapter = "none"
+
             if use_character:
                 provider_choice = self._resolve_provider_for_character(config)
 
                 if provider_choice == "diffusers" and self.diffusers_provider is not None:
                     # IP-Adapter via diffusers
+                    inference_provider = "diffusers"
+                    resolved_adapter = "ip-adapter"
                     logger.info("Using IP-Adapter (diffusers) with %d reference images", len(reference_image_paths))
                     self.diffusers_provider.load_model(config.model_id)
                     result = self.diffusers_provider.text_to_image_with_identity(
@@ -182,6 +191,8 @@ class PipelineOrchestrator:
                     )
                 elif hasattr(self.provider, 'text_to_image_with_character'):
                     # Redux via MLX
+                    inference_provider = "mlx"
+                    resolved_adapter = "redux"
                     logger.info("Using Redux character mode (MLX) with %d reference images", len(reference_image_paths))
                     result = self.provider.text_to_image_with_character(
                         prompt=config.prompt,
@@ -231,6 +242,8 @@ class PipelineOrchestrator:
                 config=config,
                 generation_time_ms=elapsed_ms,
                 created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                inference_provider=inference_provider,
+                resolved_adapter=resolved_adapter,
             )
 
             logger.info("Generation complete job=%s time=%dms path=%s", job_id, elapsed_ms, image_path)
