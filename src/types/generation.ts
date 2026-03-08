@@ -57,7 +57,7 @@ export interface Character {
   description: string;
   reference_images: string[];
   thumbnail: string;
-  adapter_type: "auto" | "redux" | "ip-adapter";
+  adapter_type: "auto" | "redux" | "ip-adapter" | "faceid";
   created_at: string;
   last_used_at: string | null;
 }

@@ -178,7 +178,7 @@ export async function getCharacter(characterId: string): Promise<Record<string, 
 // --- Adapter management ---
 
 /** Get available runtime providers */
-export async function getAvailableProviders(): Promise<{ mlx: boolean; diffusers: boolean }> {
+export async function getAvailableProviders(): Promise<{ mlx: boolean; diffusers: boolean; faceid: boolean }> {
   return invoke("get_available_providers");
 }
 

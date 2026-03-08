@@ -33,10 +33,10 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
   );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [adapterType, setAdapterType] = useState<"auto" | "redux" | "ip-adapter">(
-    (character?.adapter_type as "auto" | "redux" | "ip-adapter") ?? "auto",
+  const [adapterType, setAdapterType] = useState<"auto" | "redux" | "ip-adapter" | "faceid">(
+    (character?.adapter_type as "auto" | "redux" | "ip-adapter" | "faceid") ?? "auto",
   );
-  const [providers, setProviders] = useState<{ mlx: boolean; diffusers: boolean }>({ mlx: true, diffusers: false });
+  const [providers, setProviders] = useState<{ mlx: boolean; diffusers: boolean; faceid: boolean }>({ mlx: true, diffusers: false, faceid: false });
 
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -265,13 +265,16 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
                 Identity Method
               </span>
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-4 gap-1.5">
               {([
                 { value: "auto" as const, label: "Auto", desc: "Best available" },
                 { value: "redux" as const, label: "Redux", desc: "MLX · fast" },
-                { value: "ip-adapter" as const, label: "IP-Adapter", desc: "Diffusers · precise" },
+                { value: "ip-adapter" as const, label: "IP-Adapter", desc: "Diffusers · style" },
+                { value: "faceid" as const, label: "FaceID", desc: "SDXL · face identity" },
               ]).map((opt) => {
-                const disabled = opt.value === "ip-adapter" && !providers.diffusers;
+                const disabled =
+                  (opt.value === "ip-adapter" && !providers.diffusers) ||
+                  (opt.value === "faceid" && !providers.faceid);
                 return (
                   <button
                     key={opt.value}
@@ -294,6 +297,16 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
             {adapterType === "ip-adapter" && !providers.diffusers && (
               <p className="text-[10px] text-amber-400 mt-1">
                 IP-Adapter requires PyTorch + diffusers. Install deps to enable.
+              </p>
+            )}
+            {adapterType === "faceid" && !providers.faceid && (
+              <p className="text-[10px] text-amber-400 mt-1">
+                FaceID requires InsightFace + ONNX Runtime. Install deps to enable.
+              </p>
+            )}
+            {adapterType === "faceid" && providers.faceid && (
+              <p className="text-[10px] text-emerald-400/80 mt-1">
+                Best for face likeness — uses InsightFace ArcFace embeddings with SDXL.
               </p>
             )}
           </div>

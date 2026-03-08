@@ -25,6 +25,8 @@ const REDUX_COMPATIBLE_PREFIXES = ["flux-dev"];
 /** Map adapter_type to the adapter IDs it requires */
 function getRequiredAdapterIds(adapterType: string): string[] {
   switch (adapterType) {
+    case "faceid":
+      return ["sdxl-base-1.0", "ip-adapter-faceid-plusv2-sdxl", "insightface-buffalo-l"];
     case "ip-adapter":
       return ["flux-ip-adapter-v2", "clip-vit-large-patch14"];
     case "redux":
@@ -38,6 +40,7 @@ function getRequiredAdapterIds(adapterType: string): string[] {
 /** Human-friendly name for the adapter type */
 function adapterLabel(adapterType: string): string {
   switch (adapterType) {
+    case "faceid": return "FaceID adapter";
     case "ip-adapter": return "IP-Adapter";
     case "redux": return "Redux adapter";
     default: return "Redux adapter";
@@ -197,7 +200,13 @@ export function CharacterStrengthControl() {
           {character.reference_images.length === 1 ? "image" : "images"}
         </span>
         <span className="text-[10px] text-text-secondary/60 uppercase tracking-wider flex items-center gap-1">
-          {effectiveType === "ip-adapter" ? (
+          {effectiveType === "faceid" ? (
+            <>
+              {allAdaptersReady && <Check size={9} className="text-success" />}
+              <span className="text-emerald-400">◉</span>
+              faceid
+            </>
+          ) : effectiveType === "ip-adapter" ? (
             <>
               {allAdaptersReady && <Check size={9} className="text-success" />}
               <span className="text-purple-400">⬡</span>

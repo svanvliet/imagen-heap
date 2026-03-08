@@ -1,8 +1,8 @@
-"""Diffusers Provider — FLUX image generation via HuggingFace diffusers + PyTorch MPS.
+"""Diffusers Provider — image generation via HuggingFace diffusers + PyTorch MPS.
 
 Secondary provider for capabilities mflux doesn't support natively,
-such as IP-Adapter face identity conditioning. All imports are lazy
-so the app starts fine even if torch/diffusers aren't installed.
+such as IP-Adapter face identity conditioning (FLUX) and FaceID (SDXL).
+All imports are lazy so the app starts fine even if torch/diffusers aren't installed.
 """
 
 import gc
@@ -39,6 +39,12 @@ IP_ADAPTER_REPO = "XLabs-AI/flux-ip-adapter-v2"
 IP_ADAPTER_WEIGHT = "ip_adapter.safetensors"
 CLIP_ENCODER_REPO = "openai/clip-vit-large-patch14"
 
+# SDXL + FaceID repos
+SDXL_BASE_REPO = "stabilityai/stable-diffusion-xl-base-1.0"
+FACEID_REPO = "h94/IP-Adapter-FaceID"
+FACEID_WEIGHT = "ip-adapter-faceid-plusv2_sdxl.bin"
+FACEID_LORA_WEIGHT = "ip-adapter-faceid-plusv2_sdxl_lora.safetensors"
+
 
 class DiffusersProvider(RuntimeProvider):
     """FLUX image generation using HuggingFace diffusers on PyTorch MPS.
@@ -52,7 +58,10 @@ class DiffusersProvider(RuntimeProvider):
         self._torch = torch
         self._pipe = None
         self._loaded_model: str | None = None
+        self._active_pipeline: str | None = None  # "flux" or "sdxl"
         self._ip_adapter_loaded: bool = False
+        self._faceid_loaded: bool = False
+        self._face_extractor = None  # Lazy-loaded FaceEmbeddingExtractor
         self._device = "mps" if torch.backends.mps.is_available() else "cpu"
         self._dtype = torch.bfloat16
         logger.info("DiffusersProvider initialized (device=%s, dtype=%s)", self._device, self._dtype)
@@ -105,6 +114,7 @@ class DiffusersProvider(RuntimeProvider):
             # Use CPU offload for memory efficiency on unified memory
             self._pipe.enable_model_cpu_offload()
             self._loaded_model = model_id
+            self._active_pipeline = "flux"
             self._ip_adapter_loaded = False
 
             elapsed = time.time() - start
@@ -115,9 +125,9 @@ class DiffusersProvider(RuntimeProvider):
 
     def unload_model(self) -> None:
         if self._pipe is not None:
-            logger.info("Unloading diffusers model: %s", self._loaded_model)
+            logger.info("Unloading diffusers model: %s (pipeline=%s)", self._loaded_model, self._active_pipeline)
             # Unload IP-Adapter if loaded
-            if self._ip_adapter_loaded:
+            if self._ip_adapter_loaded or self._faceid_loaded:
                 try:
                     self._pipe.unload_ip_adapter()
                 except Exception:
@@ -125,7 +135,9 @@ class DiffusersProvider(RuntimeProvider):
             del self._pipe
             self._pipe = None
             self._loaded_model = None
+            self._active_pipeline = None
             self._ip_adapter_loaded = False
+            self._faceid_loaded = False
             gc.collect()
             if self._device == "mps":
                 self._torch.mps.empty_cache()
@@ -292,6 +304,162 @@ class DiffusersProvider(RuntimeProvider):
 
         except Exception:
             logger.exception("IP-Adapter generation failed")
+            raise
+
+    # --- SDXL + FaceID PlusV2 ---
+
+    def is_faceid_available(self) -> bool:
+        """Check if FaceID generation is possible (InsightFace installed)."""
+        try:
+            from imagen_heap.providers.face_embedding import is_available
+            return is_available()
+        except ImportError:
+            return False
+
+    def _load_sdxl_pipeline(self) -> None:
+        """Load the SDXL base model pipeline, unloading FLUX if active."""
+        if self._active_pipeline == "sdxl" and self._pipe is not None:
+            return
+
+        if self._pipe is not None:
+            logger.info("Unloading FLUX pipeline to make room for SDXL")
+            self.unload_model()
+
+        from diffusers import StableDiffusionXLPipeline
+
+        start = time.time()
+        token = self._get_hf_token()
+        logger.info("Loading SDXL pipeline from %s", SDXL_BASE_REPO)
+
+        self._pipe = StableDiffusionXLPipeline.from_pretrained(
+            SDXL_BASE_REPO,
+            torch_dtype=self._torch.float16,  # SDXL works best with float16
+            token=token,
+        )
+        self._pipe.enable_model_cpu_offload()
+        self._active_pipeline = "sdxl"
+        self._loaded_model = "sdxl-base-1.0"
+        self._faceid_loaded = False
+
+        elapsed = time.time() - start
+        logger.info("SDXL pipeline loaded in %.1fs", elapsed)
+
+    def _ensure_faceid_loaded(self) -> None:
+        """Load FaceID PlusV2 adapter + LoRA into the SDXL pipeline."""
+        if self._faceid_loaded:
+            return
+        if self._pipe is None or self._active_pipeline != "sdxl":
+            raise RuntimeError("SDXL pipeline must be loaded first.")
+
+        start = time.time()
+        logger.info("Loading FaceID PlusV2 adapter from %s", FACEID_REPO)
+
+        try:
+            self._pipe.load_ip_adapter(
+                FACEID_REPO,
+                subfolder=None,
+                weight_name=FACEID_WEIGHT,
+            )
+
+            # Load FaceID LoRA for better quality
+            try:
+                from huggingface_hub import hf_hub_download
+                lora_path = hf_hub_download(
+                    FACEID_REPO,
+                    filename=FACEID_LORA_WEIGHT,
+                    token=self._get_hf_token(),
+                )
+                self._pipe.load_lora_weights(lora_path)
+                self._pipe.fuse_lora()
+                logger.info("FaceID LoRA loaded and fused")
+            except Exception as e:
+                logger.warning("FaceID LoRA loading failed (continuing without): %s", e)
+
+            # Re-register offload hooks after adapter loading
+            self._pipe.enable_model_cpu_offload()
+
+            self._faceid_loaded = True
+            elapsed = time.time() - start
+            logger.info("FaceID adapter loaded in %.1fs", elapsed)
+
+        except Exception:
+            logger.exception("Failed to load FaceID adapter")
+            raise
+
+    @property
+    def face_extractor(self):
+        """Lazy-load the InsightFace face embedding extractor."""
+        if self._face_extractor is None:
+            from imagen_heap.providers.face_embedding import FaceEmbeddingExtractor
+            self._face_extractor = FaceEmbeddingExtractor()
+        return self._face_extractor
+
+    def text_to_image_with_faceid(
+        self,
+        prompt: str,
+        negative_prompt: str,
+        seed: int,
+        steps: int,
+        cfg: float,
+        width: int,
+        height: int,
+        reference_image_paths: list[str],
+        identity_strength: float = 0.7,
+        progress_callback: ProgressCallback | None = None,
+    ):
+        """Generate image with SDXL + FaceID PlusV2 face identity conditioning.
+
+        Uses InsightFace to extract ArcFace face embeddings from reference images,
+        then conditions SDXL generation via IP-Adapter FaceID PlusV2 for true
+        facial identity preservation.
+        """
+        import torch
+
+        # Extract face embeddings from reference images
+        logger.info(
+            "Extracting face embeddings from %d reference image(s)",
+            len(reference_image_paths),
+        )
+        avg_embedding = self.face_extractor.compute_average_embedding(reference_image_paths)
+
+        # Convert to torch tensor: [1, 1, 512] shape expected by FaceID adapter
+        face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0).unsqueeze(0)
+
+        # Load SDXL pipeline + FaceID adapter
+        self._load_sdxl_pipeline()
+        self._ensure_faceid_loaded()
+
+        # Set identity strength
+        self._pipe.set_ip_adapter_scale(identity_strength)
+
+        callback = self._make_pipeline_callback(progress_callback, steps) if progress_callback else None
+
+        logger.info(
+            "SDXL FaceID generating: prompt='%s' seed=%d steps=%d strength=%.2f",
+            prompt[:80], seed, steps, identity_strength,
+        )
+
+        start = time.time()
+        try:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+            result = self._pipe(
+                prompt=prompt,
+                negative_prompt=negative_prompt or "blurry, low quality, deformed",
+                ip_adapter_image_embeds=[face_embed],
+                height=height,
+                width=width,
+                num_inference_steps=steps,
+                guidance_scale=cfg,
+                generator=generator,
+                callback_on_step_end=callback,
+            )
+            elapsed = time.time() - start
+            logger.info("SDXL FaceID generation complete in %.1fs", elapsed)
+            return result.images[0]  # Returns PIL Image
+
+        except Exception:
+            logger.exception("SDXL FaceID generation failed")
             raise
 
     def _make_pipeline_callback(self, progress_callback: ProgressCallback, total_steps: int):

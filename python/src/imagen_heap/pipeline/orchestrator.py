@@ -29,7 +29,7 @@ class GenerationConfig:
     scheduler: str = "normal"
     character_id: str | None = None
     character_strength: float = 0.6
-    adapter_type: str = "auto"  # "auto", "redux", "ip-adapter"
+    adapter_type: str = "auto"  # "auto", "redux", "ip-adapter", "faceid"
 
 
 @dataclass
@@ -42,7 +42,7 @@ class GenerationResult:
     generation_time_ms: int
     created_at: str
     inference_provider: str = "mlx"   # "mlx", "diffusers", "stub"
-    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter"
+    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter", "sdxl-faceid-plusv2"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -106,14 +106,25 @@ class PipelineOrchestrator:
             providers["diffusers"] = is_available()
         except ImportError:
             providers["diffusers"] = False
+        try:
+            from imagen_heap.providers.face_embedding import is_available as face_available
+            providers["faceid"] = providers.get("diffusers", False) and face_available()
+        except ImportError:
+            providers["faceid"] = False
         return providers
 
     def _resolve_provider_for_character(self, config: GenerationConfig) -> str:
         """Determine which provider to use for a character generation.
 
-        Returns 'mlx' for Redux or 'diffusers' for IP-Adapter.
+        Returns 'mlx' for Redux or 'diffusers' for IP-Adapter/FaceID.
         """
         adapter_type = config.adapter_type
+
+        if adapter_type == "faceid":
+            if self.diffusers_provider is not None and hasattr(self.diffusers_provider, 'is_faceid_available') and self.diffusers_provider.is_faceid_available():
+                return "diffusers"
+            logger.warning("FaceID requested but InsightFace/DiffusersProvider unavailable, falling back to Redux")
+            return "mlx"
 
         if adapter_type == "ip-adapter":
             if self.diffusers_provider is not None:
@@ -172,8 +183,25 @@ class PipelineOrchestrator:
             if use_character:
                 provider_choice = self._resolve_provider_for_character(config)
 
-                if provider_choice == "diffusers" and self.diffusers_provider is not None:
-                    # IP-Adapter via diffusers
+                if provider_choice == "diffusers" and config.adapter_type == "faceid" and self.diffusers_provider is not None:
+                    # FaceID via SDXL + InsightFace
+                    inference_provider = "diffusers"
+                    resolved_adapter = "sdxl-faceid-plusv2"
+                    logger.info("Using FaceID (SDXL/diffusers) with %d reference images", len(reference_image_paths))
+                    result = self.diffusers_provider.text_to_image_with_faceid(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        reference_image_paths=reference_image_paths,
+                        identity_strength=config.character_strength,
+                        progress_callback=wrapped_progress,
+                    )
+                elif provider_choice == "diffusers" and self.diffusers_provider is not None:
+                    # IP-Adapter via FLUX/diffusers
                     inference_provider = "diffusers"
                     resolved_adapter = "ip-adapter"
                     logger.info("Using IP-Adapter (diffusers) with %d reference images", len(reference_image_paths))

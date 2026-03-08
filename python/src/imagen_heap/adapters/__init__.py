@@ -68,6 +68,43 @@ ADAPTER_REGISTRY: list[AdapterEntry] = [
         source_url="https://huggingface.co/openai/clip-vit-large-patch14",
         requires_provider="diffusers",
     ),
+    # SDXL + FaceID PlusV2
+    AdapterEntry(
+        id="sdxl-base-1.0",
+        name="Stable Diffusion XL Base 1.0",
+        adapter_type="model",
+        hf_repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+        compatible_models=["sdxl"],
+        file_size_bytes=6_500_000_000,  # ~6.5 GB
+        license_spdx="CreativeML-OpenRAIL-M",
+        description="SDXL base model required for FaceID generation. High-quality 1024×1024 image generation.",
+        source_url="https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+        requires_provider="diffusers",
+    ),
+    AdapterEntry(
+        id="ip-adapter-faceid-plusv2-sdxl",
+        name="IP-Adapter FaceID PlusV2 (SDXL)",
+        adapter_type="faceid",
+        hf_repo_id="h94/IP-Adapter-FaceID",
+        compatible_models=["sdxl"],
+        file_size_bytes=2_000_000_000,  # ~1.6GB weights + ~400MB LoRA
+        license_spdx="Apache-2.0",
+        description="FaceID PlusV2 adapter for SDXL. Uses InsightFace ArcFace embeddings for true facial identity preservation. Best for character consistency.",
+        source_url="https://huggingface.co/h94/IP-Adapter-FaceID",
+        requires_provider="diffusers",
+    ),
+    AdapterEntry(
+        id="insightface-buffalo-l",
+        name="InsightFace buffalo_l (Face Detection)",
+        adapter_type="face_model",
+        hf_repo_id="deepinsight/insightface",
+        compatible_models=["sdxl"],
+        file_size_bytes=300_000_000,  # ~300 MB
+        license_spdx="non-commercial",
+        description="InsightFace face analysis model. Detects faces and extracts ArcFace embeddings for FaceID. Auto-downloads on first use.",
+        source_url="https://github.com/deepinsight/insightface",
+        requires_provider="diffusers",
+    ),
 ]
 
 
