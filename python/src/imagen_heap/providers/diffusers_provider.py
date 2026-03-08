@@ -530,13 +530,12 @@ class DiffusersProvider(RuntimeProvider):
 
         callback = self._make_pipeline_callback(progress_callback, steps) if progress_callback else None
 
-        # SDXL-appropriate defaults (different from FLUX)
-        sdxl_steps = max(steps, 20)  # SDXL needs at least 20 steps
-        sdxl_cfg = cfg if cfg > 1.0 else 5.0  # SDXL uses CFG 5-7
+        # Use CFG appropriate for SDXL if user hasn't set one (FLUX default is ~3.5)
+        sdxl_cfg = cfg if cfg > 1.0 else 5.0
 
         logger.info(
             "SDXL FaceID PlusV2 generating: prompt='%s' seed=%d steps=%d cfg=%.1f strength=%.2f",
-            prompt[:80], seed, sdxl_steps, sdxl_cfg, identity_strength,
+            prompt[:80], seed, steps, sdxl_cfg, identity_strength,
         )
 
         start = time.time()
@@ -549,7 +548,7 @@ class DiffusersProvider(RuntimeProvider):
                 ip_adapter_image_embeds=[face_embed],
                 height=height,
                 width=width,
-                num_inference_steps=sdxl_steps,
+                num_inference_steps=steps,
                 guidance_scale=sdxl_cfg,
                 generator=generator,
                 callback_on_step_end=callback,
