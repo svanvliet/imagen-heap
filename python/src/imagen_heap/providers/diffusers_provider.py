@@ -497,11 +497,11 @@ class DiffusersProvider(RuntimeProvider):
         )
         avg_embedding = self.face_extractor.compute_average_embedding(reference_image_paths)
 
-        # Face embed: [1, 512] for PlusV2 projection input
-        face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0)  # [1, 512]
+        # Face embed: [1, 1, 512] — pipeline requires 3D+ for ip_adapter_image_embeds
+        face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0).unsqueeze(0)  # [1, 1, 512]
         # Stack negative (zeros) + positive for classifier-free guidance
         neg_face = torch.zeros_like(face_embed)
-        face_embed = torch.cat([neg_face, face_embed], dim=0)  # [2, 512]
+        face_embed = torch.cat([neg_face, face_embed], dim=0)  # [2, 1, 512]
 
         # 2. Compute CLIP ViT-H hidden states for PlusV2 shortcut features
         logger.info("Computing CLIP ViT-H embeddings for PlusV2 shortcut")
