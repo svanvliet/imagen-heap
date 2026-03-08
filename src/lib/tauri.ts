@@ -33,6 +33,7 @@ export async function generateImage(config: {
   scheduler: string;
   character_id?: string | null;
   character_strength?: number;
+  adapter_type?: string;
 }): Promise<{
   id: string;
   image_path: string;
@@ -176,6 +177,11 @@ export async function getCharacter(characterId: string): Promise<Record<string, 
 
 // --- Adapter management ---
 
+/** Get available runtime providers */
+export async function getAvailableProviders(): Promise<{ mlx: boolean; diffusers: boolean }> {
+  return invoke("get_available_providers");
+}
+
 /** List all adapters with download status */
 export async function getAdapters(): Promise<{ adapters: Array<{
   id: string;
@@ -187,6 +193,7 @@ export async function getAdapters(): Promise<{ adapters: Array<{
   license_spdx: string;
   description: string;
   source_url: string;
+  requires_provider: string;
   status: string;
 }> }> {
   return invoke("get_adapters");

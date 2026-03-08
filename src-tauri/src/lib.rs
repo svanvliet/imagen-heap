@@ -409,6 +409,13 @@ fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle:
 
 // --- Adapter management commands ---
 
+/// Get available runtime providers
+#[tauri::command]
+fn get_available_providers(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: get_available_providers");
+    send_rpc(&state, "get_available_providers", serde_json::json!({}))
+}
+
 /// List all adapters with download status
 #[tauri::command]
 fn get_adapters(state: State<SidecarState>) -> Result<serde_json::Value, String> {
@@ -663,6 +670,7 @@ pub fn run() {
             get_character,
             add_reference_image,
             remove_reference_image,
+            get_available_providers,
             get_adapters,
             download_adapter,
             delete_adapter,

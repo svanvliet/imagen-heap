@@ -56,6 +56,10 @@ export function useGeneration() {
     try {
       console.log("[useGeneration] Starting generation with model:", modelId);
       const config = useGenerationStore.getState().getConfig();
+      const charState = useCharacterStore.getState();
+      const selectedChar = charState.selectedCharacterId
+        ? charState.characters.find((c) => c.id === charState.selectedCharacterId)
+        : null;
       const result = await generateImage({
         prompt: config.prompt,
         negative_prompt: config.negativePrompt,
@@ -68,8 +72,9 @@ export function useGeneration() {
         model_id: modelId,
         sampler: "euler",
         scheduler: "normal",
-        character_id: useCharacterStore.getState().selectedCharacterId,
-        character_strength: useCharacterStore.getState().characterStrength,
+        character_id: charState.selectedCharacterId,
+        character_strength: charState.characterStrength,
+        adapter_type: selectedChar?.adapter_type ?? "auto",
       });
 
       console.log("[useGeneration] Generation complete:", result);

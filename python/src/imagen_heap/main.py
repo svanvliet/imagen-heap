@@ -131,6 +131,7 @@ def create_server() -> RpcServer:
             scheduler=params.get("scheduler", "normal"),
             character_id=params.get("character_id", None),
             character_strength=params.get("character_strength", 0.6),
+            adapter_type=params.get("adapter_type", "auto"),
         )
 
         # Mark character as used
@@ -315,6 +316,10 @@ def create_server() -> RpcServer:
 
     # --- Adapter management ---
 
+    def handle_get_available_providers(params: dict) -> dict:
+        """Return which runtime providers are available."""
+        return orchestrator.get_available_providers()
+
     def handle_get_adapters(params: dict) -> dict:
         """List all adapters with download status."""
         return {"adapters": adapter_manager.get_all_adapters()}
@@ -373,6 +378,7 @@ def create_server() -> RpcServer:
     server.register("remove_reference_image", handle_remove_reference_image)
 
     # Adapter management
+    server.register("get_available_providers", handle_get_available_providers)
     server.register("get_adapters", handle_get_adapters)
     server.register("download_adapter", handle_download_adapter, background=True)
     server.register("delete_adapter", handle_delete_adapter)

@@ -29,6 +29,7 @@ class GenerationConfig:
     scheduler: str = "normal"
     character_id: str | None = None
     character_strength: float = 0.6
+    adapter_type: str = "auto"  # "auto", "redux", "ip-adapter"
 
 
 @dataclass
@@ -60,6 +61,7 @@ class GenerationResult:
                 "scheduler": self.config.scheduler,
                 "character_id": self.config.character_id,
                 "character_strength": self.config.character_strength,
+                "adapter_type": self.config.adapter_type,
             },
             "generation_time_ms": self.generation_time_ms,
             "created_at": self.created_at,
@@ -73,8 +75,65 @@ class PipelineOrchestrator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.provider = provider or StubProvider()
+        self._diffusers_provider = None  # Lazy-loaded secondary provider
         self._current_job_id: str | None = None
         logger.info("PipelineOrchestrator initialized, output_dir=%s", self.output_dir)
+
+    @property
+    def diffusers_provider(self):
+        """Lazy-load the DiffusersProvider only when needed."""
+        if self._diffusers_provider is None:
+            try:
+                from imagen_heap.providers.diffusers_provider import DiffusersProvider, is_available
+                if is_available():
+                    self._diffusers_provider = DiffusersProvider()
+                    logger.info("DiffusersProvider loaded as secondary provider")
+                else:
+                    logger.info("DiffusersProvider not available (torch/MPS not found)")
+            except ImportError:
+                logger.info("DiffusersProvider not available (diffusers not installed)")
+        return self._diffusers_provider
+
+    def get_available_providers(self) -> dict:
+        """Return which providers are available."""
+        providers = {"mlx": True}  # MLX is always primary
+        try:
+            from imagen_heap.providers.diffusers_provider import is_available
+            providers["diffusers"] = is_available()
+        except ImportError:
+            providers["diffusers"] = False
+        return providers
+
+    def _resolve_provider_for_character(self, config: GenerationConfig) -> str:
+        """Determine which provider to use for a character generation.
+
+        Returns 'mlx' for Redux or 'diffusers' for IP-Adapter.
+        """
+        adapter_type = config.adapter_type
+
+        if adapter_type == "ip-adapter":
+            if self.diffusers_provider is not None:
+                return "diffusers"
+            logger.warning("IP-Adapter requested but DiffusersProvider unavailable, falling back to Redux")
+            return "mlx"
+
+        if adapter_type == "redux":
+            return "mlx"
+
+        # Auto mode: prefer IP-Adapter if available and adapter is downloaded
+        if adapter_type == "auto":
+            if self.diffusers_provider is not None:
+                # Check if IP-Adapter weights are available (downloaded)
+                try:
+                    from imagen_heap.adapters import get_adapter_by_id
+                    ip_adapter = get_adapter_by_id("flux-ip-adapter-v2")
+                    if ip_adapter:
+                        return "diffusers"
+                except Exception:
+                    pass
+            return "mlx"
+
+        return "mlx"
 
     def generate(
         self,
@@ -101,23 +160,53 @@ class PipelineOrchestrator:
             use_character = (
                 config.character_id
                 and reference_image_paths
-                and hasattr(self.provider, 'text_to_image_with_character')
             )
 
             if use_character:
-                logger.info("Using Redux character mode with %d reference images", len(reference_image_paths))
-                result = self.provider.text_to_image_with_character(
-                    prompt=config.prompt,
-                    seed=config.seed,
-                    steps=config.steps,
-                    cfg=config.cfg,
-                    width=config.width,
-                    height=config.height,
-                    reference_image_paths=reference_image_paths,
-                    character_strength=config.character_strength,
-                    model_id=config.model_id,
-                    progress_callback=wrapped_progress,
-                )
+                provider_choice = self._resolve_provider_for_character(config)
+
+                if provider_choice == "diffusers" and self.diffusers_provider is not None:
+                    # IP-Adapter via diffusers
+                    logger.info("Using IP-Adapter (diffusers) with %d reference images", len(reference_image_paths))
+                    self.diffusers_provider.load_model(config.model_id)
+                    result = self.diffusers_provider.text_to_image_with_identity(
+                        prompt=config.prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        reference_image_paths=reference_image_paths,
+                        identity_strength=config.character_strength,
+                        progress_callback=wrapped_progress,
+                    )
+                elif hasattr(self.provider, 'text_to_image_with_character'):
+                    # Redux via MLX
+                    logger.info("Using Redux character mode (MLX) with %d reference images", len(reference_image_paths))
+                    result = self.provider.text_to_image_with_character(
+                        prompt=config.prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        reference_image_paths=reference_image_paths,
+                        character_strength=config.character_strength,
+                        model_id=config.model_id,
+                        progress_callback=wrapped_progress,
+                    )
+                else:
+                    logger.warning("No character provider available, falling back to standard generation")
+                    result = self.provider.text_to_image(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        progress_callback=wrapped_progress,
+                    )
             else:
                 result = self.provider.text_to_image(
                     prompt=config.prompt,
@@ -167,6 +256,29 @@ class PipelineOrchestrator:
             except Exception:
                 logger.debug("Thumbnail generation failed, using full image", exc_info=True)
                 thumbnail_path = image_path
+
+            return str(image_path), str(thumbnail_path)
+
+        # Diffusers returns a PIL Image
+        try:
+            from PIL import Image as PILImage
+            if isinstance(result, PILImage.Image):
+                image_path = self.output_dir / f"{job_id}.png"
+                result.save(str(image_path))
+                logger.debug("Saved diffusers PIL image to %s", image_path)
+
+                thumbnail_path = self.output_dir / f"{job_id}_thumb.png"
+                try:
+                    thumb = result.copy()
+                    thumb.thumbnail((256, 256))
+                    thumb.save(str(thumbnail_path))
+                except Exception:
+                    logger.debug("Thumbnail generation failed, using full image", exc_info=True)
+                    thumbnail_path = image_path
+
+                return str(image_path), str(thumbnail_path)
+        except ImportError:
+            pass
 
             return str(image_path), str(thumbnail_path)
 
