@@ -135,6 +135,23 @@ REGISTRY: list[ModelEntry] = [
         hf_repo_id="black-forest-labs/FLUX.1-dev",
         mflux_model_name="dev",
     ),
+    # Stable Diffusion XL — uses diffusers/PyTorch MPS, not mflux
+    ModelEntry(
+        id="sdxl-base-1.0",
+        name="Stable Diffusion XL 1.0",
+        version="1.0",
+        architecture="sdxl",
+        license_spdx="CreativeML-OpenRAIL-M",
+        file_size_bytes=6_500_000_000,  # ~6.5 GB (safetensors only)
+        quantization="fp16",
+        min_memory_mb=8000,
+        source_url="https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+        checksum_sha256="",
+        is_default=False,
+        description="High quality 1024×1024 generation via diffusers. Required for FaceID character identity. Runs on PyTorch MPS.",
+        filename="stable-diffusion-xl-base-1.0",
+        hf_repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    ),
 ]
 
 

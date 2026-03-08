@@ -26,7 +26,7 @@ const REDUX_COMPATIBLE_PREFIXES = ["flux-dev"];
 function getRequiredAdapterIds(adapterType: string): string[] {
   switch (adapterType) {
     case "faceid":
-      return ["sdxl-base-1.0", "ip-adapter-faceid-plusv2-sdxl"];
+      return ["ip-adapter-faceid-plusv2-sdxl"];
     case "ip-adapter":
       return ["flux-ip-adapter-v2", "clip-vit-large-patch14"];
     case "redux":
@@ -53,6 +53,8 @@ export function CharacterStrengthControl() {
   const strength = useCharacterStore((s) => s.characterStrength);
   const setStrength = useCharacterStore((s) => s.setCharacterStrength);
   const selectedModelId = useModelStore((s) => s.selectedModelId);
+  const setSelectedModel = useModelStore((s) => s.setSelectedModel);
+  const models = useModelStore((s) => s.models);
 
   const adapters = useAdapterStore((s) => s.adapters);
   const adaptersLoading = useAdapterStore((s) => s.isLoading);
@@ -66,12 +68,20 @@ export function CharacterStrengthControl() {
   const character = characters.find((c) => c.id === selectedId);
   if (!character) return null;
 
-  const isModelCompatible = selectedModelId
-    ? REDUX_COMPATIBLE_PREFIXES.some((p) => selectedModelId.startsWith(p))
-    : false;
-
   // Determine which adapters are needed and which are missing
   const effectiveType = character.adapter_type ?? "auto";
+
+  // FaceID uses SDXL — check if SDXL model is available and selected
+  const isFaceIdType = effectiveType === "faceid";
+  const sdxlModel = models.find((m) => m.architecture === "sdxl" && m.status === "downloaded");
+  const isSdxlSelected = selectedModelId?.startsWith("sdxl") ?? false;
+  const needsSdxlSwitch = isFaceIdType && !isSdxlSelected;
+
+  const isModelCompatible = isFaceIdType
+    ? isSdxlSelected
+    : selectedModelId
+      ? REDUX_COMPATIBLE_PREFIXES.some((p) => selectedModelId.startsWith(p))
+      : false;
   const requiredIds = getRequiredAdapterIds(effectiveType);
   const missingAdapterIds = requiredIds.filter(
     (id) => !adapters.some((a) => a.id === id && a.status === "downloaded"),
@@ -127,9 +137,6 @@ export function CharacterStrengthControl() {
   const currentDownloadName = currentlyDownloadingId
     ? adapters.find((a) => a.id === currentlyDownloadingId)?.name ?? currentlyDownloadingId
     : "";
-
-  // FaceID uses SDXL not FLUX — model compatibility check adapts per adapter type
-  const isFaceIdType = effectiveType === "faceid";
 
   return (
     <div className="space-y-2 mt-2">
@@ -219,7 +226,7 @@ export function CharacterStrengthControl() {
         </div>
       )}
 
-      {/* Model compatibility warning — FaceID uses SDXL (no FLUX needed), others need FLUX-dev */}
+      {/* Model compatibility — FaceID needs SDXL, others need FLUX-dev */}
       {allAdaptersReady && !isFaceIdType && !isModelCompatible && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
           <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
@@ -228,11 +235,32 @@ export function CharacterStrengthControl() {
           </span>
         </div>
       )}
-      {allAdaptersReady && isFaceIdType && (
+      {isFaceIdType && needsSdxlSwitch && sdxlModel && (
+        <div className="px-2 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-md space-y-1.5">
+          <span className="text-[10px] text-emerald-300 leading-tight block">
+            FaceID requires the SDXL model. Switch to use it?
+          </span>
+          <button
+            onClick={() => setSelectedModel(sdxlModel.id)}
+            className="w-full py-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-medium transition-colors"
+          >
+            Switch to {sdxlModel.name}
+          </button>
+        </div>
+      )}
+      {isFaceIdType && needsSdxlSwitch && !sdxlModel && (
+        <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
+          <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
+          <span className="text-[10px] text-amber-300 leading-tight">
+            FaceID requires the SDXL model. Download it from Model Manager.
+          </span>
+        </div>
+      )}
+      {isFaceIdType && isSdxlSelected && allAdaptersReady && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-md">
           <Check size={12} className="text-emerald-400 mt-0.5 flex-shrink-0" />
           <span className="text-[10px] text-emerald-300 leading-tight">
-            FaceID uses SDXL — the selected FLUX model above is ignored for this character.
+            Ready — SDXL model selected for FaceID character generation.
           </span>
         </div>
       )}

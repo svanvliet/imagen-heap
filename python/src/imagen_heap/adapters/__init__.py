@@ -68,19 +68,7 @@ ADAPTER_REGISTRY: list[AdapterEntry] = [
         source_url="https://huggingface.co/openai/clip-vit-large-patch14",
         requires_provider="diffusers",
     ),
-    # SDXL + FaceID PlusV2
-    AdapterEntry(
-        id="sdxl-base-1.0",
-        name="Stable Diffusion XL Base 1.0",
-        adapter_type="model",
-        hf_repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-        compatible_models=["sdxl"],
-        file_size_bytes=6_500_000_000,  # ~6.5 GB
-        license_spdx="CreativeML-OpenRAIL-M",
-        description="SDXL base model required for FaceID generation. High-quality 1024×1024 image generation.",
-        source_url="https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
-        requires_provider="diffusers",
-    ),
+    # SDXL + FaceID PlusV2 (SDXL base model is in the model registry, not here)
     AdapterEntry(
         id="ip-adapter-faceid-plusv2-sdxl",
         name="IP-Adapter FaceID PlusV2 (SDXL)",

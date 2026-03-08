@@ -247,16 +247,33 @@ class PipelineOrchestrator:
                         progress_callback=wrapped_progress,
                     )
             else:
-                result = self.provider.text_to_image(
-                    prompt=config.prompt,
-                    negative_prompt=config.negative_prompt,
-                    seed=config.seed,
-                    steps=config.steps,
-                    cfg=config.cfg,
-                    width=config.width,
-                    height=config.height,
-                    progress_callback=wrapped_progress,
-                )
+                # Standard text-to-image (no character)
+                is_sdxl = "sdxl" in config.model_id
+                if is_sdxl and self.diffusers_provider is not None:
+                    # SDXL models use DiffusersProvider
+                    inference_provider = "diffusers"
+                    self.diffusers_provider._load_sdxl_pipeline()
+                    result = self.diffusers_provider.text_to_image(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        progress_callback=wrapped_progress,
+                    )
+                else:
+                    result = self.provider.text_to_image(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        progress_callback=wrapped_progress,
+                    )
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 

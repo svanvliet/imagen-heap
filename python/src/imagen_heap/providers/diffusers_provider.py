@@ -204,7 +204,8 @@ class DiffusersProvider(RuntimeProvider):
         start = time.time()
         try:
             generator = self._torch.Generator(device="cpu").manual_seed(seed)
-            result = self._pipe(
+            # Build kwargs — SDXL supports negative_prompt, FLUX ignores it
+            pipe_kwargs = dict(
                 prompt=prompt,
                 height=height,
                 width=width,
@@ -213,6 +214,9 @@ class DiffusersProvider(RuntimeProvider):
                 generator=generator,
                 callback_on_step_end=callback,
             )
+            if negative_prompt and self._active_pipeline == "sdxl":
+                pipe_kwargs["negative_prompt"] = negative_prompt
+            result = self._pipe(**pipe_kwargs)
             elapsed = time.time() - start
             logger.info("Diffusers generation complete in %.1fs", elapsed)
             return result.images[0]  # Returns PIL Image
