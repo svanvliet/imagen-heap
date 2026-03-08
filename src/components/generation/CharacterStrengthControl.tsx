@@ -76,11 +76,24 @@ export function CharacterStrengthControl() {
           {reduxError ? (
             <div className="space-y-1.5">
               <p className="text-[10px] text-amber-400 leading-tight">
-                {reduxError.includes("AUTH_REQUIRED")
-                  ? "HuggingFace authentication required. Add your token in Model Manager → Adapters."
-                  : reduxError.includes("LICENSE_REQUIRED")
-                    ? "License acceptance required on HuggingFace."
-                    : "Download failed. Check Model Manager → Adapters for details."}
+                {reduxError.includes("LICENSE_REQUIRED") ? (
+                  <>
+                    Accept the license at{" "}
+                    <a
+                      href="https://huggingface.co/black-forest-labs/FLUX.1-Redux-dev"
+                      target="_blank"
+                      rel="noopener"
+                      className="underline hover:text-amber-300"
+                    >
+                      HuggingFace
+                    </a>
+                    , then retry.
+                  </>
+                ) : reduxError.includes("AUTH_REQUIRED") ? (
+                  "HuggingFace authentication required. Add your token in Model Manager."
+                ) : (
+                  "Download failed. Check Model Manager → Adapters for details."
+                )}
               </p>
               <button
                 onClick={handleDownloadRedux}

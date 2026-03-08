@@ -117,12 +117,22 @@ class AdapterManager:
             error_str = str(e)
             logger.exception("HuggingFace download failed for adapter %s", adapter_id)
 
+            # 403 "not in authorized list" = need to accept license
             if "not in the authorized list" in error_str or ("403" in error_str and "gated" in error_str.lower()):
                 raise RuntimeError(
                     f"LICENSE_REQUIRED: Adapter '{entry.name}' requires you to accept its license. "
                     f"Visit {entry.source_url} and click 'Agree and access repository', then retry."
                 ) from e
 
+            # GatedRepoError with token = license not accepted for this specific model
+            if ("gated" in error_str.lower() or "401" in error_str) and hf_token:
+                raise RuntimeError(
+                    f"LICENSE_REQUIRED: Adapter '{entry.name}' requires you to accept its license. "
+                    f"Visit {entry.source_url} and click 'Agree and access repository', then retry. "
+                    f"Your HuggingFace token is already saved."
+                ) from e
+
+            # GatedRepoError without token = need auth
             if "gated" in error_str.lower() or "401" in error_str:
                 raise RuntimeError(
                     f"AUTH_REQUIRED: Adapter '{entry.name}' requires HuggingFace authentication. "
@@ -148,10 +158,10 @@ class AdapterManager:
 
     def _load_hf_token(self) -> str | None:
         """Load saved HuggingFace token (shared with ModelManager)."""
-        # Check our app's token first
-        app_token_path = Path(os.path.expanduser("~/.imagen-heap/.hf_token"))
-        if app_token_path.exists():
-            token = app_token_path.read_text().strip()
+        # Check the app's model manager token (canonical location)
+        models_token_path = Path(os.path.expanduser("~/.imagen-heap/models/.hf_token"))
+        if models_token_path.exists():
+            token = models_token_path.read_text().strip()
             if token:
                 return token
         # Fall back to HF CLI cached token
