@@ -393,8 +393,8 @@ True facial identity adapters that would solve this problem:
 ### Decision
 
 - **Short term:** Document Redux limitations and tuning tips. Redux is the best available option in mflux for character influence.
-- **Medium term:** Monitor mflux upstream for IP-Adapter/PuLID support. The adapter management system (M5.6) is designed to accommodate new adapter types.
-- **Alternative path:** Consider adding a non-mflux adapter pathway (e.g., via diffusers/PyTorch MPS) as a secondary provider — this would be a significant architecture change tracked separately.
+- **Medium term:** Add diffusers/PyTorch MPS as a secondary provider for face identity adapters. See §8c below.
+- **Long term:** Monitor mflux upstream for native identity adapters.
 
 ### Sources
 
@@ -402,3 +402,129 @@ True facial identity adapters that would solve this problem:
 - mflux variants source: `mflux/models/flux/variants/` (checked all subdirectories)
 - PuLID-FLUX (ComfyUI): https://github.com/ToTheBeginning/PuLID
 - IP-Adapter (HuggingFace): https://huggingface.co/h94/IP-Adapter
+
+---
+
+## 8c) Multi-Runtime Research — Face Identity via Diffusers/PyTorch MPS (March 2026)
+
+### Context
+
+After confirming that mflux has no native face-identity adapter support (§8b), we investigated whether adding HuggingFace `diffusers` with PyTorch MPS as a secondary runtime could solve the character resemblance problem. The goal: true facial identity preservation across generations.
+
+### Options Evaluated
+
+#### Option 1: XLabs-AI IP-Adapter v2 via diffusers ✅ RECOMMENDED
+
+- **What:** IP-Adapter for FLUX.1 that uses CLIP vision embeddings for image-prompt conditioning
+- **HuggingFace:** `XLabs-AI/flux-ip-adapter-v2` (~1.5GB adapter weights)
+- **Image encoder:** `openai/clip-vit-large-patch14` (~1.5GB)
+- **API:** Standard diffusers `FluxPipeline.load_ip_adapter()` — clean, maintained API
+- **Apple Silicon:** Works on MPS. Some patches may be needed for rotary position embeddings (documented in community guides). M1 through M4 all supported.
+- **Face identity quality:** Uses CLIP vision (holistic image features, not face-specific). Better than Redux for identity because CLIP captures more semantic structure. For FaceID-specific work, XLabs-AI has a community fork with InsightFace integration (`JnJarvis/x-flux-ip-adapter-faceid`).
+- **Performance:** ~2-4 min per 1024x1024 image on M3 Max (FP16/bfloat16), 4 steps with schnell
+- **License:** FLUX.1-dev non-commercial; FLUX.1-schnell Apache 2.0
+
+**Python API (confirmed working):**
+```python
+import torch
+from diffusers import FluxPipeline
+from transformers import CLIPVisionModelWithProjection
+
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "openai/clip-vit-large-patch14", torch_dtype=torch.bfloat16
+)
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", image_encoder=image_encoder,
+    torch_dtype=torch.bfloat16
+).to("mps")
+pipe.load_ip_adapter(
+    "XLabs-AI/flux-ip-adapter-v2", weight_name="ip_adapter.safetensors"
+)
+pipe.set_ip_adapter_scale(0.7)
+result = pipe(prompt="...", ip_adapter_image=face_image, ...).images[0]
+```
+
+#### Option 2: PuLID-FLUX via Nunchaku ❌ ELIMINATED
+
+- **What:** Best-in-class face identity (InsightFace + EVA-CLIP embeddings, contrastive alignment)
+- **Apple Silicon:** **Nunchaku is CUDA-only.** No ARM64 wheels. No MPS support. Cannot run on Mac.
+- **Status:** Eliminated. If Nunchaku adds MPS support in the future, reconsider.
+
+#### Option 3: PuLID-FLUX via custom diffusers pipeline 🔶 FUTURE
+
+- **What:** Port PuLID's conditioning approach to work directly with diffusers FluxPipeline
+- **Apple Silicon:** Theoretically possible — InsightFace works via ONNX Runtime CoreML EP, and the transformer conditioning could be implemented in PyTorch MPS
+- **Complexity:** Very high — requires custom attention injection code, face parsing pipeline, EVA-CLIP integration
+- **Status:** Too much engineering for near-term. Revisit after Option 1 is proven.
+
+#### Option 4: InstantX FLUX.1-dev-IP-Adapter ⚠️ LESS SUITABLE
+
+- **What:** `InstantX/FLUX.1-dev-IP-Adapter` — uses SigLIP (not CLIP) for image encoding
+- **Apple Silicon:** Uses PyTorch; should work on MPS, but inference code is custom (NOT yet in diffusers standard API)
+- **Identity quality:** Their own model card says "not for fine-grained style transfer or character consistency" — similar trade-off to Redux
+- **Status:** Less promising than XLabs-AI v2 for our use case. Custom inference code would need porting.
+
+#### Option 5: InsightFace face embeddings + custom conditioning 🔶 FUTURE
+
+- **What:** Use InsightFace (ONNX Runtime + CoreML) to extract precise face embeddings, inject into FLUX via custom attention
+- **Apple Silicon:** InsightFace works on Mac via ONNX Runtime CoreML EP (face detection + embedding in <2ms)
+- **Complexity:** Highest — essentially building a custom face-identity pipeline from scratch
+- **Status:** Possible, but premature. Revisit if XLabs-AI IP-Adapter isn't sufficient.
+
+### Dependency Analysis
+
+Adding a diffusers-based provider requires:
+
+| Dependency | Size | Purpose |
+|-----------|------|---------|
+| `torch` | ~2.5GB | PyTorch runtime with MPS backend |
+| `diffusers` | ~200MB | HuggingFace diffusion pipelines |
+| `transformers` | Already installed | Model loading (already a dependency) |
+| `accelerate` | ~100MB | Device management, model offloading |
+| CLIP ViT-L/14 | ~1.5GB | Image encoder for IP-Adapter |
+| XLabs IP-Adapter v2 | ~1.5GB | Adapter weights |
+| FLUX.1-dev (FP16) | ~34GB | Base model (diffusers format, NOT mflux q8 format) |
+| **OR** FLUX.1-schnell | ~24GB | Faster alternative (Apache 2.0, 4 steps) |
+
+**Important:** The diffusers FluxPipeline requires FLUX model weights in the original HuggingFace safetensors format, NOT the mflux-quantized format we already have. This means the user would need to download an additional ~24-34GB of model weights. This is the biggest UX concern.
+
+**Mitigation strategies:**
+1. Use `FLUX.1-schnell` for IP-Adapter (Apache 2.0, smaller, faster — 4 steps) instead of dev
+2. Use model offloading (`pipe.enable_model_cpu_offload()`) to reduce peak memory
+3. Download only when user first activates an IP-Adapter character
+4. Share `transformers` tokenizer/text encoder weights where possible
+
+### Performance Expectations (M3 Max 64GB)
+
+| Mode | Provider | Steps | Est. Time | Memory |
+|------|----------|-------|-----------|--------|
+| Standard text-to-image | MLX (mflux) | 4 (schnell) | ~55s | ~17GB |
+| Standard text-to-image | MLX (mflux) | 25 (dev) | ~5-8 min | ~54GB |
+| Redux character | MLX (mflux) | 25 (dev) | ~11 min | ~54GB |
+| **IP-Adapter character** | **Diffusers (MPS)** | **4 (schnell)** | **~2-4 min** | **~28GB** |
+| **IP-Adapter character** | **Diffusers (MPS)** | **25 (dev)** | **~8-15 min** | **~38GB** |
+
+### Architecture Decision
+
+**Dual-provider approach:** Keep mflux as the PRIMARY provider (fast, native MLX). Add diffusers as a SECONDARY provider specifically for adapter capabilities mflux doesn't have.
+
+The `PipelineOrchestrator` already accepts a `RuntimeProvider` interface. We'll:
+1. Create a `DiffusersProvider` implementing `RuntimeProvider` + `text_to_image_with_identity()` 
+2. Route based on adapter type: Redux → MLXProvider, IP-Adapter → DiffusersProvider
+3. Standard text-to-image always routes to MLXProvider (faster)
+4. The character's `adapter_type` field determines which provider handles generation
+
+This fits cleanly into our existing adapter management system (M5.6 Adapters tab). We add new adapter entries for the diffusers-based adapters.
+
+### Sources
+
+- XLabs-AI FLUX IP-Adapter v2: https://huggingface.co/XLabs-AI/flux-ip-adapter-v2
+- XLabs-AI IP-Adapter FaceID fork: https://github.com/JnJarvis/x-flux-ip-adapter-faceid
+- diffusers IP-Adapter docs: https://github.com/huggingface/diffusers/blob/main/docs/source/en/using-diffusers/ip_adapter.md
+- diffusers FluxPipeline MPS guide: https://dev.to/0xkoji/run-flux1-on-m3-mac-with-diffusers-9m5
+- HuggingFace MPS optimization: https://huggingface.co/docs/diffusers/en/optimization/mps
+- Nunchaku (CUDA-only): https://github.com/nunchaku-ai/nunchaku/releases
+- PuLID GitHub: https://github.com/ToTheBeginning/PuLID
+- InsightFace ONNX Runtime + CoreML: https://github.com/deepinsight/insightface/issues/2238
+- Flux Apple Silicon performance guide: https://www.apatero.com/blog/flux-apple-silicon-m1-m2-m3-m4-complete-performance-guide-2025
+- PyTorch MPS backend: https://developer.apple.com/metal/pytorch/

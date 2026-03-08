@@ -699,6 +699,103 @@ Investigation into improving character resemblance beyond Redux's holistic appro
 
 ---
 
+### Milestone 5b: Multi-Runtime & IP-Adapter Face Identity
+
+**Goal:** Add HuggingFace `diffusers` with PyTorch MPS as a secondary runtime provider, enabling XLabs-AI IP-Adapter v2 for true face-identity character generation. Users can choose between Redux (holistic style influence) and IP-Adapter (CLIP-based identity) per character.
+
+> **Research reference:** See `docs/research.md` §8c for full options evaluation, dependency analysis, performance estimates, and architecture decision.
+
+#### Tasks
+
+**5b.1 — Python: DiffusersProvider class** 🔲
+
+Create a new `RuntimeProvider` implementation that uses HuggingFace `diffusers` FluxPipeline with PyTorch MPS backend.
+
+- New file: `python/src/imagen_heap/providers/diffusers_provider.py`
+- Implements `RuntimeProvider` interface: `load_model()`, `unload_model()`, `text_to_image()`, `get_device_info()`, `get_memory_status()`
+- Add `text_to_image_with_identity()` method for IP-Adapter face conditioning
+- Device detection: use `"mps"` on Apple Silicon, `"cpu"` fallback
+- Uses `torch.bfloat16` dtype for memory efficiency
+- Memory management: `enable_model_cpu_offload()` for lower peak usage
+- Progress callback integration with diffusers pipeline callback system
+- Lazy imports: `torch` and `diffusers` only imported when DiffusersProvider is actually instantiated
+
+**5b.2 — Python: IP-Adapter loading and face conditioning** 🔲
+
+Wire XLabs-AI IP-Adapter v2 into the DiffusersProvider.
+
+- Load CLIP ViT-L/14 image encoder (`openai/clip-vit-large-patch14`)
+- Load IP-Adapter weights (`XLabs-AI/flux-ip-adapter-v2`, `ip_adapter.safetensors`)
+- Accept reference face image(s), preprocess to CLIP input format
+- `set_ip_adapter_scale()` maps to character strength (0.0–1.0)
+- Handle adapter loading/unloading lifecycle (free memory when switching back to MLX)
+
+**5b.3 — Python: Provider registry and routing** 🔲
+
+Update `PipelineOrchestrator` and `main.py` to support multi-provider routing.
+
+- Provider registry: maintain dict of available providers (`{"mlx": MLXProvider, "diffusers": DiffusersProvider}`)
+- Auto-detect provider availability (try import, check device)
+- Routing logic in `generate()`:
+  - Standard text-to-image → MLXProvider (always, for speed)
+  - Redux character → MLXProvider (current behavior)
+  - IP-Adapter character → DiffusersProvider
+- Memory coordination: unload one provider's model before loading another (shared memory on Apple Silicon)
+- New RPC: `get_available_providers` — returns which providers are installed and functional
+
+**5b.4 — Python: Dependencies and installation** 🔲
+
+Add diffusers runtime dependencies, keeping them optional (not required for basic mflux operation).
+
+- Add `torch`, `diffusers`, `accelerate` as optional dependencies
+- DiffusersProvider catches `ImportError` gracefully if torch not installed
+- Update `requirements.txt` / `pyproject.toml` with optional `[identity]` extra
+- Verify InsightFace + onnxruntime-coreml work for future FaceID enhancement (optional, not required for v1 IP-Adapter)
+
+**5b.5 — Adapter registry: IP-Adapter entries** 🔲
+
+Add IP-Adapter as a downloadable adapter in the existing adapter management system (M5.6).
+
+- New `ADAPTER_REGISTRY` entries:
+  - `flux-ip-adapter-v2` — XLabs-AI IP-Adapter weights (~1.5GB)
+  - `clip-vit-large-patch14` — CLIP image encoder (~1.5GB)
+  - `flux-dev-diffusers` or `flux-schnell-diffusers` — base model in diffusers format (~24-34GB)
+- AdapterManager handles download/delete for these new entries
+- Adapters tab shows these with appropriate metadata and size warnings
+
+**5b.6 — Frontend: Adapter type selector per character** 🔲
+
+Let users choose which adapter type to use per character.
+
+- Character edit dialog: new "Adapter Type" selector (Redux vs IP-Adapter)
+- Update `Character` type: `adapter_type` field with values `"redux"` | `"ip-adapter"` | `"auto"`
+- `"auto"` selects best available (IP-Adapter if downloaded, else Redux)
+- CharacterStrengthControl: show which adapter is active
+- When IP-Adapter selected but not downloaded: show inline download prompt (same pattern as Redux)
+- Disable IP-Adapter option if diffusers provider not available
+
+**5b.7 — Frontend: Provider status indicator** 🔲
+
+Show users which runtime providers are available and active.
+
+- Settings or status area: show "MLX ✅" / "Diffusers ✅" / "Diffusers ❌ (install torch)"
+- Adapter cards: show which provider they require
+- Generation metadata: record which provider was used (`inference_provider: "mlx" | "diffusers"`)
+
+**5b.8 — Testing and validation** 🔲
+
+- Unit tests for DiffusersProvider (mocked, like StubProvider pattern)
+- Integration test: generate image with IP-Adapter on MPS (manual, needs GPU)
+- Verify MLX provider still works identically (no regression)
+- Test provider switching (MLX → diffusers → MLX) memory behavior
+- Test graceful degradation when torch not installed
+
+**Deliverable:** Users can select IP-Adapter as a character's adapter type. When selected, generation routes through the diffusers/PyTorch MPS pipeline with XLabs-AI IP-Adapter v2, producing images with stronger identity preservation than Redux. Standard generation continues to use the fast MLX provider. Provider availability is visible in the UI.
+
+**Key UX consideration:** The diffusers pipeline requires FLUX model weights in original HuggingFace format (~24-34GB additional download). This should be clearly communicated in the adapter download flow with estimated disk space and download time.
+
+---
+
 ### Milestone 6: Pose & Composition Control
 
 **Goal:** Users control pose via presets, reference images, and an interactive skeleton editor. ControlNet conditioning works.
@@ -1295,7 +1392,9 @@ M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) ✅ → M4 (Styles
                          │                                        │
                          ├→ M3 (Models) ✅ ───────────────────────┤
                          │                                        │
-                         ├→ M5 (Characters) ──────────────────────┤
+                         ├→ M5 (Characters) ✅ ───────────────────┤
+                         │       │                                │
+                         │       └→ M5b (Multi-Runtime/IP-Adapter)┤
                          │                                        │
                          └→ M6 (Pose) ────────────────────────────┤
                                                                   │
@@ -1306,7 +1405,7 @@ M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) ✅ → M4 (Styles
                     M9 (Export & Polish) ←── all above ──────────┘
 ```
 
-M1 → M2 → M2b is strictly sequential. M3 was built in parallel with M2b. After M2b, milestones M4–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M9 is the integration and polish phase that depends on all others.
+M1 → M2 → M2b is strictly sequential. M3 was built in parallel with M2b. After M2b, milestones M4–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M5b depends on M5 (character system + adapter management must exist first). M9 is the integration and polish phase that depends on all others.
 
 ---
 
