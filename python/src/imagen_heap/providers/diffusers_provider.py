@@ -140,6 +140,12 @@ class DiffusersProvider(RuntimeProvider):
                 IP_ADAPTER_REPO,
                 weight_name=IP_ADAPTER_WEIGHT,
             )
+
+            # Re-register CPU offload hooks so the newly-added image_encoder
+            # and ip_adapter modules are properly moved to MPS during inference.
+            # Without this, CLIP weights stay on CPU while input tensors are on MPS.
+            self._pipe.enable_model_cpu_offload()
+
             self._ip_adapter_loaded = True
             elapsed = time.time() - start
             logger.info("IP-Adapter loaded in %.1fs", elapsed)
