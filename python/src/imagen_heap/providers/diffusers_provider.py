@@ -445,6 +445,9 @@ class DiffusersProvider(RuntimeProvider):
 
         # Convert to torch tensor: [1, 1, 512] shape expected by FaceID adapter
         face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0).unsqueeze(0)
+        # Pipeline expects negative + positive stacked (splits via chunk(2))
+        neg_embed = torch.zeros_like(face_embed)
+        face_embed = torch.cat([neg_embed, face_embed], dim=0)  # [2, 1, 512]
 
         # Load SDXL pipeline + FaceID adapter
         self._load_sdxl_pipeline(model_id)
