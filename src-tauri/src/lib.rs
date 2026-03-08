@@ -244,7 +244,7 @@ async fn generate_image(state: State<'_, SidecarState>, config: serde_json::Valu
     let writer = state.writer.clone();
 
     tokio::task::spawn_blocking(move || {
-        send_rpc_raw(&next_id, &pending, &writer, "generate", config, 600)
+        send_rpc_raw(&next_id, &pending, &writer, "generate", config, 1800)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
