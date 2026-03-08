@@ -68,16 +68,16 @@ ADAPTER_REGISTRY: list[AdapterEntry] = [
         source_url="https://huggingface.co/openai/clip-vit-large-patch14",
         requires_provider="diffusers",
     ),
-    # SDXL + FaceID (SDXL base model is in the model registry, not here)
+    # SDXL + FaceID PlusV2 (SDXL base model is in the model registry, not here)
     AdapterEntry(
-        id="ip-adapter-faceid-sdxl",
-        name="IP-Adapter FaceID (SDXL)",
+        id="ip-adapter-faceid-plusv2-sdxl",
+        name="IP-Adapter FaceID PlusV2 (SDXL)",
         adapter_type="faceid",
         hf_repo_id="h94/IP-Adapter-FaceID",
         compatible_models=["sdxl"],
-        file_size_bytes=1_700_000_000,  # ~1.3GB weights + ~400MB LoRA
+        file_size_bytes=2_000_000_000,  # ~1.6GB weights + ~400MB LoRA
         license_spdx="Apache-2.0",
-        description="FaceID adapter for SDXL. Uses InsightFace ArcFace embeddings for facial identity preservation. Best for character consistency.",
+        description="FaceID PlusV2 adapter for SDXL. Uses InsightFace + CLIP ViT-H for high-quality facial identity preservation. Best for character consistency.",
         source_url="https://huggingface.co/h94/IP-Adapter-FaceID",
         requires_provider="diffusers",
     ),

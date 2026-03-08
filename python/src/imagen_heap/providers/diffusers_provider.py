@@ -39,13 +39,13 @@ IP_ADAPTER_REPO = "XLabs-AI/flux-ip-adapter-v2"
 IP_ADAPTER_WEIGHT = "ip_adapter.safetensors"
 CLIP_ENCODER_REPO = "openai/clip-vit-large-patch14"
 
-# SDXL + FaceID repos
+# SDXL + FaceID PlusV2 repos
 SDXL_BASE_REPO = "stabilityai/stable-diffusion-xl-base-1.0"
 FACEID_REPO = "h94/IP-Adapter-FaceID"
-# Use basic FaceID (InsightFace-only, no CLIP encoder needed)
-# PlusV2 requires a separate CLIP ViT-H encoder (~3.5GB) which we don't ship yet
-FACEID_WEIGHT = "ip-adapter-faceid_sdxl.bin"
-FACEID_LORA_WEIGHT = "ip-adapter-faceid_sdxl_lora.safetensors"
+FACEID_WEIGHT = "ip-adapter-faceid-plusv2_sdxl.bin"
+FACEID_LORA_WEIGHT = "ip-adapter-faceid-plusv2_sdxl_lora.safetensors"
+# CLIP ViT-H-14 for PlusV2 shortcut features (1.26 GB fp16, hidden_size=1280)
+CLIP_H_REPO = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
 
 
 class DiffusersProvider(RuntimeProvider):
@@ -64,6 +64,8 @@ class DiffusersProvider(RuntimeProvider):
         self._ip_adapter_loaded: bool = False
         self._faceid_loaded: bool = False
         self._face_extractor = None  # Lazy-loaded FaceEmbeddingExtractor
+        self._clip_h_encoder = None  # Lazy-loaded CLIP ViT-H for FaceID PlusV2
+        self._clip_h_processor = None
         self._device = "mps" if torch.backends.mps.is_available() else "cpu"
         self._dtype = torch.bfloat16
         logger.info("DiffusersProvider initialized (device=%s, dtype=%s)", self._device, self._dtype)
@@ -366,21 +368,21 @@ class DiffusersProvider(RuntimeProvider):
         logger.info("SDXL pipeline loaded in %.1fs", elapsed)
 
     def _ensure_faceid_loaded(self) -> None:
-        """Load FaceID adapter + LoRA into the SDXL pipeline."""
+        """Load FaceID PlusV2 adapter + LoRA into the SDXL pipeline."""
         if self._faceid_loaded:
             return
         if self._pipe is None or self._active_pipeline != "sdxl":
             raise RuntimeError("SDXL pipeline must be loaded first.")
 
         start = time.time()
-        logger.info("Loading FaceID adapter from %s/%s", FACEID_REPO, FACEID_WEIGHT)
+        logger.info("Loading FaceID PlusV2 adapter from %s/%s", FACEID_REPO, FACEID_WEIGHT)
 
         try:
             self._pipe.load_ip_adapter(
                 FACEID_REPO,
                 subfolder="",
                 weight_name=FACEID_WEIGHT,
-                image_encoder_folder=None,  # FaceID uses InsightFace, not CLIP
+                image_encoder_folder=None,  # We load CLIP ViT-H separately
             )
 
             # Load FaceID LoRA for better quality
@@ -399,11 +401,64 @@ class DiffusersProvider(RuntimeProvider):
 
             self._faceid_loaded = True
             elapsed = time.time() - start
-            logger.info("FaceID adapter loaded in %.1fs", elapsed)
+            logger.info("FaceID PlusV2 adapter loaded in %.1fs", elapsed)
 
         except Exception:
             logger.exception("Failed to load FaceID adapter")
             raise
+
+    def _load_clip_h_encoder(self) -> None:
+        """Lazy-load CLIP ViT-H-14 encoder for FaceID PlusV2 shortcut features."""
+        if self._clip_h_encoder is not None:
+            return
+
+        import torch
+        from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
+
+        start = time.time()
+        logger.info("Loading CLIP ViT-H encoder from %s", CLIP_H_REPO)
+        self._clip_h_encoder = CLIPVisionModelWithProjection.from_pretrained(
+            CLIP_H_REPO,
+            torch_dtype=torch.float16,
+        )
+        self._clip_h_encoder.eval()
+        self._clip_h_processor = CLIPImageProcessor.from_pretrained(CLIP_H_REPO)
+        elapsed = time.time() - start
+        logger.info("CLIP ViT-H encoder loaded in %.1fs", elapsed)
+
+    def _compute_clip_embeds(self, image_paths: list[str]) -> "torch.Tensor":
+        """Compute CLIP ViT-H hidden states from reference images for FaceID PlusV2.
+
+        Returns tensor of shape [1, 1, 257, 1280] (averaged across images).
+        """
+        import torch
+        from PIL import Image
+
+        self._load_clip_h_encoder()
+
+        all_embeds = []
+        for path in image_paths:
+            try:
+                img = Image.open(path).convert("RGB")
+                inputs = self._clip_h_processor(images=img, return_tensors="pt")
+                with torch.no_grad():
+                    output = self._clip_h_encoder(
+                        pixel_values=inputs.pixel_values.to(dtype=torch.float16),
+                        output_hidden_states=True,
+                    )
+                # Use penultimate hidden state (standard for IP-Adapter)
+                hidden = output.hidden_states[-2]  # [1, 257, 1280]
+                all_embeds.append(hidden)
+            except Exception as e:
+                logger.warning("CLIP encoding failed for %s: %s", path, e)
+
+        if not all_embeds:
+            raise ValueError("Failed to compute CLIP embeddings from any reference image")
+
+        # Average across images for multi-reference robustness
+        avg_clip = torch.mean(torch.stack(all_embeds), dim=0)  # [1, 257, 1280]
+        # Add image-count dimension: [1, 1, 257, 1280]
+        return avg_clip.unsqueeze(1)
 
     @property
     def face_extractor(self):
@@ -427,42 +482,55 @@ class DiffusersProvider(RuntimeProvider):
         model_id: str = "sdxl-base-1.0",
         progress_callback: ProgressCallback | None = None,
     ):
-        """Generate image with SDXL + FaceID face identity conditioning.
+        """Generate image with SDXL + FaceID PlusV2 face identity conditioning.
 
-        Uses InsightFace to extract ArcFace face embeddings from reference images,
-        then conditions SDXL generation via IP-Adapter FaceID for facial identity
-        preservation.
+        Uses InsightFace ArcFace embeddings for facial identity and CLIP ViT-H
+        shortcut features for visual detail (skin, hair, lighting). Both are
+        required for PlusV2 quality.
         """
         import torch
 
-        # Extract face embeddings from reference images
+        # 1. Extract InsightFace face embeddings from reference images
         logger.info(
             "Extracting face embeddings from %d reference image(s)",
             len(reference_image_paths),
         )
         avg_embedding = self.face_extractor.compute_average_embedding(reference_image_paths)
 
-        # Basic FaceID projection expects [batch, 512] shape
+        # Face embed: [1, 512] for PlusV2 projection input
         face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0)  # [1, 512]
-        # Pipeline expects negative + positive stacked (splits via chunk(2))
-        neg_embed = torch.zeros_like(face_embed)
-        face_embed = torch.cat([neg_embed, face_embed], dim=0)  # [2, 512]
+        # Stack negative (zeros) + positive for classifier-free guidance
+        neg_face = torch.zeros_like(face_embed)
+        face_embed = torch.cat([neg_face, face_embed], dim=0)  # [2, 512]
 
-        # Load SDXL pipeline + FaceID adapter
+        # 2. Compute CLIP ViT-H hidden states for PlusV2 shortcut features
+        logger.info("Computing CLIP ViT-H embeddings for PlusV2 shortcut")
+        clip_embeds = self._compute_clip_embeds(reference_image_paths)  # [1, 1, 257, 1280]
+        # Stack negative (zeros) + positive for CFG
+        neg_clip = torch.zeros_like(clip_embeds)
+        clip_embeds = torch.cat([neg_clip, clip_embeds], dim=0)  # [2, 1, 257, 1280]
+
+        # 3. Load SDXL pipeline + FaceID PlusV2 adapter
         self._load_sdxl_pipeline(model_id)
         self._ensure_faceid_loaded()
 
-        # Set identity strength
+        # 4. Set CLIP embeds on the FaceID PlusV2 projection module
+        proj_layers = self._pipe.unet.encoder_hid_proj.image_projection_layers
+        proj_layers[0].clip_embeds = clip_embeds.to(dtype=torch.float16)
+        proj_layers[0].shortcut = True  # Enable ID shortcut for better identity preservation
+        logger.debug("Set CLIP embeds on projection layer: %s", clip_embeds.shape)
+
+        # 5. Set identity strength
         self._pipe.set_ip_adapter_scale(identity_strength)
 
         callback = self._make_pipeline_callback(progress_callback, steps) if progress_callback else None
 
         # SDXL-appropriate defaults (different from FLUX)
-        sdxl_steps = max(steps, 20)  # SDXL needs at least 20 steps for good quality
-        sdxl_cfg = cfg if cfg > 1.0 else 5.0  # SDXL uses CFG 5-7, not FLUX's ~3.5
+        sdxl_steps = max(steps, 20)  # SDXL needs at least 20 steps
+        sdxl_cfg = cfg if cfg > 1.0 else 5.0  # SDXL uses CFG 5-7
 
         logger.info(
-            "SDXL FaceID generating: prompt='%s' seed=%d steps=%d cfg=%.1f strength=%.2f",
+            "SDXL FaceID PlusV2 generating: prompt='%s' seed=%d steps=%d cfg=%.1f strength=%.2f",
             prompt[:80], seed, sdxl_steps, sdxl_cfg, identity_strength,
         )
 
@@ -482,11 +550,11 @@ class DiffusersProvider(RuntimeProvider):
                 callback_on_step_end=callback,
             )
             elapsed = time.time() - start
-            logger.info("SDXL FaceID generation complete in %.1fs", elapsed)
+            logger.info("SDXL FaceID PlusV2 generation complete in %.1fs", elapsed)
             return result.images[0]  # Returns PIL Image
 
         except Exception:
-            logger.exception("SDXL FaceID generation failed")
+            logger.exception("SDXL FaceID PlusV2 generation failed")
             raise
 
     def _make_pipeline_callback(self, progress_callback: ProgressCallback, total_steps: int):

@@ -42,7 +42,7 @@ class GenerationResult:
     generation_time_ms: int
     created_at: str
     inference_provider: str = "mlx"   # "mlx", "diffusers", "stub"
-    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter", "sdxl-faceid"
+    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter", "sdxl-faceid-plusv2"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -186,7 +186,7 @@ class PipelineOrchestrator:
                 if provider_choice == "diffusers" and config.adapter_type == "faceid" and self.diffusers_provider is not None:
                     # FaceID via SDXL + InsightFace
                     inference_provider = "diffusers"
-                    resolved_adapter = "sdxl-faceid"
+                    resolved_adapter = "sdxl-faceid-plusv2"
                     logger.info("Using FaceID (SDXL/diffusers) with %d reference images", len(reference_image_paths))
                     result = self.diffusers_provider.text_to_image_with_faceid(
                         prompt=config.prompt,
