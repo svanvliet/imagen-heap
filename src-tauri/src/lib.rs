@@ -373,6 +373,26 @@ fn get_character(state: State<SidecarState>, character_id: String) -> Result<ser
     }))
 }
 
+/// Add a reference image to an existing character
+#[tauri::command]
+fn add_reference_image(state: State<SidecarState>, character_id: String, image_path: String) -> Result<serde_json::Value, String> {
+    info!("Command: add_reference_image id={}", character_id);
+    send_rpc(&state, "add_reference_image", serde_json::json!({
+        "character_id": character_id,
+        "image_path": image_path,
+    }))
+}
+
+/// Remove a reference image by index
+#[tauri::command]
+fn remove_reference_image(state: State<SidecarState>, character_id: String, image_index: u32) -> Result<serde_json::Value, String> {
+    info!("Command: remove_reference_image id={} index={}", character_id, image_index);
+    send_rpc(&state, "remove_reference_image", serde_json::json!({
+        "character_id": character_id,
+        "image_index": image_index,
+    }))
+}
+
 /// Reveal a model's folder in the system file manager
 #[tauri::command]
 fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle: AppHandle) -> Result<(), String> {
@@ -641,6 +661,8 @@ pub fn run() {
             update_character,
             delete_character,
             get_character,
+            add_reference_image,
+            remove_reference_image,
             get_adapters,
             download_adapter,
             delete_adapter,

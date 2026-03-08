@@ -1,27 +1,54 @@
 /**
- * CharacterCreateDialog — modal for creating a new character card.
- * Name, description, drag-and-drop reference images (1–5), create button.
+ * CharacterDialog — modal for creating or editing a character card.
+ * Create mode: empty form, creates new character on submit.
+ * Edit mode: pre-populated from existing character, saves changes incrementally.
  */
 import { useState, useRef, useCallback } from "react";
-import { X, Upload, ImagePlus, Trash2, Sparkles } from "lucide-react";
+import { X, Upload, ImagePlus, Trash2, Sparkles, Pencil } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCharacterStore } from "@/stores/characters";
 import { cn } from "@/lib/utils";
+import * as api from "@/lib/tauri";
+import type { Character } from "@/types/generation";
 
-interface CharacterCreateDialogProps {
+interface CharacterDialogProps {
   onClose: () => void;
+  /** When provided, dialog opens in edit mode for this character */
+  character?: Character;
 }
 
-export function CharacterCreateDialog({ onClose }: CharacterCreateDialogProps) {
+export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
+  const isEditMode = !!character;
   const createCharacter = useCharacterStore((s) => s.createCharacter);
+  const updateCharacter = useCharacterStore((s) => s.updateCharacter);
+  const loadCharacters = useCharacterStore((s) => s.loadCharacters);
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [imagePaths, setImagePaths] = useState<string[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
+  const [name, setName] = useState(character?.name ?? "");
+  const [description, setDescription] = useState(character?.description ?? "");
+  // In create mode, imagePaths are local filesystem paths (not yet copied).
+  // In edit mode, imagePaths are the character's stored reference_images.
+  const [imagePaths, setImagePaths] = useState<string[]>(
+    character?.reference_images ?? [],
+  );
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const nameRef = useRef<HTMLInputElement>(null);
+
+  // Track which images were removed (by original index) and added (local paths) in edit mode
+  const [removedIndices, setRemovedIndices] = useState<Set<number>>(new Set());
+  const [addedPaths, setAddedPaths] = useState<string[]>([]);
+
+  // Build the display list: original images (minus removed) + newly added
+  const displayImages = isEditMode
+    ? [
+        ...imagePaths.filter((_, i) => !removedIndices.has(i)),
+        ...addedPaths,
+      ]
+    : imagePaths;
+
+  const totalImages = displayImages.length;
 
   const handleAddImages = useCallback(async () => {
     try {
@@ -35,44 +62,123 @@ export function CharacterCreateDialog({ onClose }: CharacterCreateDialogProps) {
       if (!selected) return;
 
       const paths = Array.isArray(selected) ? selected : [selected];
-      const newPaths = [...imagePaths, ...paths].slice(0, 5);
-      setImagePaths(newPaths);
+      const remaining = 5 - totalImages;
+      if (remaining <= 0) return;
+      const toAdd = paths.slice(0, remaining);
+
+      if (isEditMode) {
+        setAddedPaths((prev) => [...prev, ...toAdd]);
+      } else {
+        setImagePaths((prev) => [...prev, ...toAdd].slice(0, 5));
+      }
     } catch (err) {
       console.error("File dialog error:", err);
     }
-  }, [imagePaths]);
+  }, [totalImages, isEditMode]);
 
-  const handleRemoveImage = (index: number) => {
-    setImagePaths((prev) => prev.filter((_, i) => i !== index));
-  };
+  const handleRemoveImage = useCallback(
+    async (displayIndex: number) => {
+      if (!isEditMode) {
+        setImagePaths((prev) => prev.filter((_, i) => i !== displayIndex));
+        return;
+      }
 
-  const handleCreate = async () => {
+      // In edit mode, figure out if it's an original or a newly added image
+      const origCount = imagePaths.filter((_, i) => !removedIndices.has(i)).length;
+      if (displayIndex < origCount) {
+        // Map display index back to original index
+        let origIdx = -1;
+        let seen = 0;
+        for (let i = 0; i < imagePaths.length; i++) {
+          if (!removedIndices.has(i)) {
+            if (seen === displayIndex) {
+              origIdx = i;
+              break;
+            }
+            seen++;
+          }
+        }
+        if (origIdx >= 0) {
+          setRemovedIndices((prev) => new Set([...prev, origIdx]));
+        }
+      } else {
+        // It's a newly added image
+        const addedIdx = displayIndex - origCount;
+        setAddedPaths((prev) => prev.filter((_, i) => i !== addedIdx));
+      }
+    },
+    [isEditMode, imagePaths, removedIndices],
+  );
+
+  const handleSave = async () => {
     if (!name.trim()) {
       setError("Name is required");
       nameRef.current?.focus();
       return;
     }
 
-    setIsCreating(true);
+    setIsSaving(true);
     setError(null);
 
     try {
-      const result = await createCharacter(name.trim(), description.trim(), imagePaths);
-      if (result) {
+      if (isEditMode && character) {
+        // Update metadata if changed
+        const updates: Record<string, unknown> = {};
+        if (name.trim() !== character.name) updates.name = name.trim();
+        if (description.trim() !== character.description)
+          updates.description = description.trim();
+        if (Object.keys(updates).length > 0) {
+          await updateCharacter(character.id, updates);
+        }
+
+        // Remove images (in reverse order to preserve indices)
+        const sortedRemoved = [...removedIndices].sort((a, b) => b - a);
+        for (const idx of sortedRemoved) {
+          await api.removeReferenceImage(character.id, idx);
+        }
+
+        // Add new images
+        for (const path of addedPaths) {
+          await api.addReferenceImage(character.id, path);
+        }
+
+        await loadCharacters();
         onClose();
       } else {
-        setError("Failed to create character");
+        // Create mode
+        const result = await createCharacter(
+          name.trim(),
+          description.trim(),
+          imagePaths,
+        );
+        if (result) {
+          onClose();
+        } else {
+          setError("Failed to create character");
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") onClose();
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleCreate();
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
+  };
+
+  const hasChanges = isEditMode
+    ? name.trim() !== character?.name ||
+      description.trim() !== character?.description ||
+      removedIndices.size > 0 ||
+      addedPaths.length > 0
+    : true;
+
+  /** Resolve image src for display — edit mode images are stored paths, create mode are local paths */
+  const imageSrc = (path: string) => {
+    return convertFileSrc(path);
   };
 
   return (
@@ -87,9 +193,13 @@ export function CharacterCreateDialog({ onClose }: CharacterCreateDialogProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-default">
           <div className="flex items-center gap-2">
-            <Sparkles size={18} className="text-accent" />
+            {isEditMode ? (
+              <Pencil size={18} className="text-accent" />
+            ) : (
+              <Sparkles size={18} className="text-accent" />
+            )}
             <h2 className="text-base font-semibold text-text-primary">
-              New Character
+              {isEditMode ? "Edit Character" : "New Character"}
             </h2>
           </div>
           <button
@@ -140,23 +250,22 @@ export function CharacterCreateDialog({ onClose }: CharacterCreateDialogProps) {
             <label className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5 block">
               Reference Images
               <span className="text-text-secondary/50 normal-case tracking-normal ml-1">
-                ({imagePaths.length}/5)
+                ({totalImages}/5)
               </span>
             </label>
 
-            {imagePaths.length > 0 && (
+            {totalImages > 0 && (
               <div className="grid grid-cols-5 gap-2 mb-2">
-                {imagePaths.map((path, i) => (
+                {displayImages.map((path, i) => (
                   <div
-                    key={i}
+                    key={`${path}-${i}`}
                     className="relative group aspect-square rounded-lg overflow-hidden border border-border-default"
                   >
                     <img
-                      src={`asset://localhost/${encodeURIComponent(path)}`}
+                      src={imageSrc(path)}
                       alt={`Reference ${i + 1}`}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        // Fallback for asset protocol issues
                         (e.target as HTMLImageElement).style.display = "none";
                       }}
                     />
@@ -171,16 +280,16 @@ export function CharacterCreateDialog({ onClose }: CharacterCreateDialogProps) {
               </div>
             )}
 
-            {imagePaths.length < 5 && (
+            {totalImages < 5 && (
               <button
                 onClick={handleAddImages}
                 className={cn(
                   "w-full border-2 border-dashed border-border-default rounded-lg transition-colors hover:border-accent hover:bg-accent-muted/30",
-                  imagePaths.length === 0 ? "py-8" : "py-3",
+                  totalImages === 0 ? "py-8" : "py-3",
                 )}
               >
                 <div className="flex flex-col items-center gap-1.5 text-text-secondary">
-                  {imagePaths.length === 0 ? (
+                  {totalImages === 0 ? (
                     <>
                       <ImagePlus size={24} />
                       <span className="text-sm">Add reference images</span>
@@ -216,24 +325,28 @@ export function CharacterCreateDialog({ onClose }: CharacterCreateDialogProps) {
             Cancel
           </button>
           <button
-            onClick={handleCreate}
-            disabled={isCreating || !name.trim()}
+            onClick={handleSave}
+            disabled={isSaving || !name.trim() || (isEditMode && !hasChanges)}
             className={cn(
               "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2",
-              name.trim()
+              name.trim() && (!isEditMode || hasChanges)
                 ? "bg-accent text-white hover:bg-indigo-400"
                 : "bg-bg-hover text-text-secondary cursor-not-allowed",
             )}
           >
-            {isCreating ? (
+            {isSaving ? (
               <>
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Creating...
+                {isEditMode ? "Saving..." : "Creating..."}
               </>
             ) : (
               <>
-                <Sparkles size={14} />
-                Create Character
+                {isEditMode ? (
+                  <Pencil size={14} />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                {isEditMode ? "Save Changes" : "Create Character"}
               </>
             )}
           </button>

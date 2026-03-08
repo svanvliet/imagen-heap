@@ -3,16 +3,17 @@
  * Shows circular thumbnails with accent ring on selection, "None" and "+" buttons.
  */
 import { useEffect, useRef, useState } from "react";
-import { Plus, User, X, Trash2 } from "lucide-react";
+import { Plus, User, X, Trash2, Pencil } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCharacterStore } from "@/stores/characters";
 import { cn } from "@/lib/utils";
 
 interface CharacterAvatarRowProps {
   onCreateClick: () => void;
+  onEditClick: (characterId: string) => void;
 }
 
-export function CharacterAvatarRow({ onCreateClick }: CharacterAvatarRowProps) {
+export function CharacterAvatarRow({ onCreateClick, onEditClick }: CharacterAvatarRowProps) {
   const characters = useCharacterStore((s) => s.characters);
   const selectedId = useCharacterStore((s) => s.selectedCharacterId);
   const selectCharacter = useCharacterStore((s) => s.selectCharacter);
@@ -47,6 +48,12 @@ export function CharacterAvatarRow({ onCreateClick }: CharacterAvatarRowProps) {
   const handleDelete = async () => {
     if (!contextMenu) return;
     await deleteCharacter(contextMenu.characterId);
+    setContextMenu(null);
+  };
+
+  const handleEdit = () => {
+    if (!contextMenu) return;
+    onEditClick(contextMenu.characterId);
     setContextMenu(null);
   };
 
@@ -85,6 +92,7 @@ export function CharacterAvatarRow({ onCreateClick }: CharacterAvatarRowProps) {
             <button
               key={char.id}
               onClick={() => selectCharacter(char.id)}
+              onDoubleClick={() => onEditClick(char.id)}
               onContextMenu={(e) => handleContextMenu(e, char.id)}
               className={cn(
                 "flex-shrink-0 w-10 h-10 rounded-full border-2 overflow-hidden transition-all",
@@ -133,6 +141,17 @@ export function CharacterAvatarRow({ onCreateClick }: CharacterAvatarRowProps) {
           style={{ left: contextMenu.x, top: contextMenu.y }}
           data-context-menu
         >
+          <button
+            className="w-full px-3 py-1.5 text-sm text-left hover:bg-bg-hover flex items-center gap-2 text-text-primary"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              handleEdit();
+            }}
+          >
+            <Pencil size={14} />
+            Edit
+          </button>
+          <div className="mx-2 my-0.5 border-t border-border-default" />
           <button
             className="w-full px-3 py-1.5 text-sm text-left hover:bg-bg-hover flex items-center gap-2 text-red-400"
             onMouseDown={(e) => {

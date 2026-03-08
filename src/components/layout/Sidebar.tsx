@@ -8,10 +8,32 @@ import { AdvancedParams } from "@/components/generation/AdvancedParams";
 import { GenerateButton } from "@/components/generation/GenerateButton";
 import { CharacterAvatarRow } from "@/components/generation/CharacterAvatarRow";
 import { CharacterStrengthControl } from "@/components/generation/CharacterStrengthControl";
-import { CharacterCreateDialog } from "@/components/generation/CharacterCreateDialog";
+import { CharacterDialog } from "@/components/generation/CharacterCreateDialog";
+import { useCharacterStore } from "@/stores/characters";
+import type { Character } from "@/types/generation";
 
 export function Sidebar() {
-  const [showCreateCharacter, setShowCreateCharacter] = useState(false);
+  const [showCharacterDialog, setShowCharacterDialog] = useState(false);
+  const [editingCharacter, setEditingCharacter] = useState<Character | undefined>(undefined);
+  const characters = useCharacterStore((s) => s.characters);
+
+  const handleCreateClick = () => {
+    setEditingCharacter(undefined);
+    setShowCharacterDialog(true);
+  };
+
+  const handleEditClick = (characterId: string) => {
+    const char = characters.find((c) => c.id === characterId);
+    if (char) {
+      setEditingCharacter(char);
+      setShowCharacterDialog(true);
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setShowCharacterDialog(false);
+    setEditingCharacter(undefined);
+  };
 
   return (
     <div className="flex flex-col h-full bg-bg-secondary">
@@ -22,7 +44,8 @@ export function Sidebar() {
             Character
           </label>
           <CharacterAvatarRow
-            onCreateClick={() => setShowCreateCharacter(true)}
+            onCreateClick={handleCreateClick}
+            onEditClick={handleEditClick}
           />
           <CharacterStrengthControl />
         </div>
@@ -71,9 +94,12 @@ export function Sidebar() {
         <GenerateButton />
       </div>
 
-      {/* Character creation modal */}
-      {showCreateCharacter && (
-        <CharacterCreateDialog onClose={() => setShowCreateCharacter(false)} />
+      {/* Character create/edit modal */}
+      {showCharacterDialog && (
+        <CharacterDialog
+          onClose={handleCloseDialog}
+          character={editingCharacter}
+        />
       )}
     </div>
   );

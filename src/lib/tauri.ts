@@ -153,6 +153,22 @@ export async function deleteCharacter(characterId: string): Promise<{ success: b
   return invoke("delete_character", { characterId });
 }
 
+/** Add a reference image to an existing character */
+export async function addReferenceImage(
+  characterId: string,
+  imagePath: string,
+): Promise<Record<string, unknown>> {
+  return invoke("add_reference_image", { characterId, imagePath });
+}
+
+/** Remove a reference image by index */
+export async function removeReferenceImage(
+  characterId: string,
+  imageIndex: number,
+): Promise<Record<string, unknown>> {
+  return invoke("remove_reference_image", { characterId, imageIndex });
+}
+
 /** Get a single character */
 export async function getCharacter(characterId: string): Promise<Record<string, unknown>> {
   return invoke("get_character", { characterId });

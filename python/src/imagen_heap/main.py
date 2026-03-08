@@ -287,6 +287,32 @@ def create_server() -> RpcServer:
             raise ValueError(f"Character not found: {character_id}")
         return result
 
+    def handle_add_reference_image(params: dict) -> dict:
+        """Add a reference image to an existing character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        image_path = params.get("image_path", "")
+        if not image_path:
+            raise ValueError("image_path is required")
+        result = character_manager.add_reference_image(character_id, image_path)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    def handle_remove_reference_image(params: dict) -> dict:
+        """Remove a reference image by index."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        image_index = params.get("image_index")
+        if image_index is None:
+            raise ValueError("image_index is required")
+        result = character_manager.remove_reference_image(character_id, int(image_index))
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
     # --- Adapter management ---
 
     def handle_get_adapters(params: dict) -> dict:
@@ -343,6 +369,8 @@ def create_server() -> RpcServer:
     server.register("update_character", handle_update_character)
     server.register("delete_character", handle_delete_character)
     server.register("get_character", handle_get_character)
+    server.register("add_reference_image", handle_add_reference_image)
+    server.register("remove_reference_image", handle_remove_reference_image)
 
     # Adapter management
     server.register("get_adapters", handle_get_adapters)
