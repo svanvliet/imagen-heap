@@ -1,8 +1,8 @@
 # Implementation Status
 
-## Current Phase: M5 — Character System ✅ | M6 (Pose & Composition Control) next
+## Current Phase: M5b — Multi-Runtime & IP-Adapter (in progress) | M6 (Pose & Composition Control) next
 
-**Branch:** `feature/character-system` (ahead of main by ~8 commits, ready to merge)
+**Branch:** `feature/character-system`
 
 ### Progress Log
 
@@ -323,8 +323,25 @@
 | `525f6f5` | M5.6 | feat(m5.6): adapter management system with Model Manager tab + inline download |
 | `edac91f` | M5.6 | fix: adapter auth — use saved HF token + correct LICENSE_REQUIRED detection |
 | `e118181` | M5.6 | fix: increase generate timeout to 30min for Redux + add callback error logging |
+| `c83be4c` | M5 | docs: update status, plan, and research for M5 completion |
+| `02a4a5f` | M5 | feat(m5): character edit — context menu Edit, dual-purpose dialog, add/remove ref |
+| `6fe0fad` | M5b | docs: multi-runtime research, IP-Adapter plan, requirements update |
+| `cd3730a` | M5b | feat(m5b): multi-provider routing + IP-Adapter adapter registry |
+| `7fe7e21` | M5b | feat(m5b): adapter type UI selector + provider status badges |
+
+### M5b Progress (Multi-Runtime & IP-Adapter)
+| Task | Status |
+|------|--------|
+| M5b-1: DiffusersProvider class | ✅ |
+| M5b-2: IP-Adapter loading | ✅ |
+| M5b-3: Provider routing | ✅ |
+| M5b-4: Dependencies | ✅ |
+| M5b-5: Adapter registry | ✅ |
+| M5b-6: Adapter type UI | ✅ |
+| M5b-7: Provider status | ✅ |
+| M5b-8: End-to-end testing | 🔲 Pending |
 
 ### Test Counts
-- Python: 35 tests passing
+- Python: 41 tests passing
 - Frontend: 16 tests passing (vitest)
 - Rust: cargo check passes

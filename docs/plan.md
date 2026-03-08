@@ -707,7 +707,7 @@ Investigation into improving character resemblance beyond Redux's holistic appro
 
 #### Tasks
 
-**5b.1 — Python: DiffusersProvider class** 🔲
+**5b.1 — Python: DiffusersProvider class** ✅
 
 Create a new `RuntimeProvider` implementation that uses HuggingFace `diffusers` FluxPipeline with PyTorch MPS backend.
 
@@ -720,7 +720,7 @@ Create a new `RuntimeProvider` implementation that uses HuggingFace `diffusers` 
 - Progress callback integration with diffusers pipeline callback system
 - Lazy imports: `torch` and `diffusers` only imported when DiffusersProvider is actually instantiated
 
-**5b.2 — Python: IP-Adapter loading and face conditioning** 🔲
+**5b.2 — Python: IP-Adapter loading and face conditioning** ✅
 
 Wire XLabs-AI IP-Adapter v2 into the DiffusersProvider.
 
@@ -730,62 +730,58 @@ Wire XLabs-AI IP-Adapter v2 into the DiffusersProvider.
 - `set_ip_adapter_scale()` maps to character strength (0.0–1.0)
 - Handle adapter loading/unloading lifecycle (free memory when switching back to MLX)
 
-**5b.3 — Python: Provider registry and routing** 🔲
+**5b.3 — Python: Provider registry and routing** ✅
 
 Update `PipelineOrchestrator` and `main.py` to support multi-provider routing.
 
-- Provider registry: maintain dict of available providers (`{"mlx": MLXProvider, "diffusers": DiffusersProvider}`)
-- Auto-detect provider availability (try import, check device)
-- Routing logic in `generate()`:
+- Lazy-loaded DiffusersProvider as secondary provider on orchestrator
+- Routing logic in `generate()` based on `config.adapter_type`:
   - Standard text-to-image → MLXProvider (always, for speed)
   - Redux character → MLXProvider (current behavior)
   - IP-Adapter character → DiffusersProvider
-- Memory coordination: unload one provider's model before loading another (shared memory on Apple Silicon)
+- PIL Image handling in `_process_result()` alongside mflux GeneratedImage
 - New RPC: `get_available_providers` — returns which providers are installed and functional
+- Full stack wired: Python RPC → Rust command → TypeScript API
 
-**5b.4 — Python: Dependencies and installation** 🔲
+**5b.4 — Python: Dependencies and installation** ✅
 
-Add diffusers runtime dependencies, keeping them optional (not required for basic mflux operation).
+All diffusers runtime dependencies already installed (torch 2.10.0, diffusers 0.37.0, accelerate 1.13.0).
 
-- Add `torch`, `diffusers`, `accelerate` as optional dependencies
 - DiffusersProvider catches `ImportError` gracefully if torch not installed
-- Update `requirements.txt` / `pyproject.toml` with optional `[identity]` extra
-- Verify InsightFace + onnxruntime-coreml work for future FaceID enhancement (optional, not required for v1 IP-Adapter)
+- `is_available()` module-level check for torch + diffusers + MPS
 
-**5b.5 — Adapter registry: IP-Adapter entries** 🔲
+**5b.5 — Adapter registry: IP-Adapter entries** ✅
 
-Add IP-Adapter as a downloadable adapter in the existing adapter management system (M5.6).
+Added IP-Adapter as downloadable adapters in the existing adapter management system.
 
 - New `ADAPTER_REGISTRY` entries:
-  - `flux-ip-adapter-v2` — XLabs-AI IP-Adapter weights (~1.5GB)
-  - `clip-vit-large-patch14` — CLIP image encoder (~1.5GB)
-  - `flux-dev-diffusers` or `flux-schnell-diffusers` — base model in diffusers format (~24-34GB)
-- AdapterManager handles download/delete for these new entries
-- Adapters tab shows these with appropriate metadata and size warnings
+  - `flux-ip-adapter-v2` — XLabs-AI IP-Adapter weights (~1.5GB), requires_provider="diffusers"
+  - `clip-vit-large-patch14` — CLIP image encoder (~1.7GB), requires_provider="diffusers"
+- Added `requires_provider` field to AdapterEntry for frontend provider awareness
+- Adapters tab shows these with appropriate metadata
 
-**5b.6 — Frontend: Adapter type selector per character** 🔲
+**5b.6 — Frontend: Adapter type selector per character** ✅
 
 Let users choose which adapter type to use per character.
 
-- Character edit dialog: new "Adapter Type" selector (Redux vs IP-Adapter)
-- Update `Character` type: `adapter_type` field with values `"redux"` | `"ip-adapter"` | `"auto"`
-- `"auto"` selects best available (IP-Adapter if downloaded, else Redux)
-- CharacterStrengthControl: show which adapter is active
-- When IP-Adapter selected but not downloaded: show inline download prompt (same pattern as Redux)
-- Disable IP-Adapter option if diffusers provider not available
+- Character edit dialog: "Identity Method" selector (Auto/Redux/IP-Adapter) with visual cards
+- Updated `Character` type: `adapter_type` field with values `"auto"` | `"redux"` | `"ip-adapter"`
+- IP-Adapter option disabled with message if diffusers provider not available
+- adapter_type saved with character updates, passed through generation pipeline
+- useGeneration hook reads selected character's adapter_type
 
-**5b.7 — Frontend: Provider status indicator** 🔲
+**5b.7 — Frontend: Provider status indicator** ✅
 
 Show users which runtime providers are available and active.
 
-- Settings or status area: show "MLX ✅" / "Diffusers ✅" / "Diffusers ❌ (install torch)"
-- Adapter cards: show which provider they require
-- Generation metadata: record which provider was used (`inference_provider: "mlx" | "diffusers"`)
+- CharacterStrengthControl: provider badge shows "redux" or "ip-adapter" based on character's adapter type
+- Character dialog queries `get_available_providers` to enable/disable options
+- Adapter entries include `requires_provider` field for frontend filtering
 
 **5b.8 — Testing and validation** 🔲
 
-- Unit tests for DiffusersProvider (mocked, like StubProvider pattern)
-- Integration test: generate image with IP-Adapter on MPS (manual, needs GPU)
+- Unit tests for provider routing (6 new tests added, all passing)
+- Integration test: generate image with IP-Adapter on MPS (manual, needs user)
 - Verify MLX provider still works identically (no regression)
 - Test provider switching (MLX → diffusers → MLX) memory behavior
 - Test graceful degradation when torch not installed
