@@ -376,7 +376,7 @@ class DiffusersProvider(RuntimeProvider):
         try:
             self._pipe.load_ip_adapter(
                 FACEID_REPO,
-                subfolder=None,
+                subfolder="",
                 weight_name=FACEID_WEIGHT,
             )
 
