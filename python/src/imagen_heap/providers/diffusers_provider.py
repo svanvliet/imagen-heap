@@ -57,6 +57,16 @@ class DiffusersProvider(RuntimeProvider):
         self._dtype = torch.bfloat16
         logger.info("DiffusersProvider initialized (device=%s, dtype=%s)", self._device, self._dtype)
 
+    def _get_hf_token(self) -> str | None:
+        """Retrieve the stored HuggingFace token (same one used by model downloads)."""
+        try:
+            token_path = Path.home() / ".imagen-heap" / "hf_token"
+            if token_path.exists():
+                return token_path.read_text().strip() or None
+        except Exception:
+            pass
+        return os.environ.get("HF_TOKEN")
+
     def load_model(self, model_id: str, quantization: str = "q8") -> None:
         """Load a FLUX model via diffusers FluxPipeline.
 
@@ -84,10 +94,13 @@ class DiffusersProvider(RuntimeProvider):
         start = time.time()
         logger.info("Loading diffusers FluxPipeline from %s (device=%s)", repo, self._device)
 
+        token = self._get_hf_token()
+
         try:
             self._pipe = FluxPipeline.from_pretrained(
                 repo,
                 torch_dtype=self._dtype,
+                token=token,
             )
             # Use CPU offload for memory efficiency on unified memory
             self._pipe.enable_model_cpu_offload()
@@ -225,7 +238,15 @@ class DiffusersProvider(RuntimeProvider):
             if path.exists():
                 try:
                     img = Image.open(str(path)).convert("RGB")
+                    # Center-crop to square for better CLIP encoding
+                    w, h = img.size
+                    crop_size = min(w, h)
+                    left = (w - crop_size) // 2
+                    top = (h - crop_size) // 2
+                    img = img.crop((left, top, left + crop_size, top + crop_size))
+                    img = img.resize((512, 512), Image.LANCZOS)
                     valid_images.append(img)
+                    logger.debug("Loaded reference image %s (%dx%d → 512x512)", p, w, h)
                 except Exception as e:
                     logger.warning("Failed to load reference image %s: %s", p, e)
             else:
