@@ -42,8 +42,10 @@ CLIP_ENCODER_REPO = "openai/clip-vit-large-patch14"
 # SDXL + FaceID repos
 SDXL_BASE_REPO = "stabilityai/stable-diffusion-xl-base-1.0"
 FACEID_REPO = "h94/IP-Adapter-FaceID"
-FACEID_WEIGHT = "ip-adapter-faceid-plusv2_sdxl.bin"
-FACEID_LORA_WEIGHT = "ip-adapter-faceid-plusv2_sdxl_lora.safetensors"
+# Use basic FaceID (InsightFace-only, no CLIP encoder needed)
+# PlusV2 requires a separate CLIP ViT-H encoder (~3.5GB) which we don't ship yet
+FACEID_WEIGHT = "ip-adapter-faceid_sdxl.bin"
+FACEID_LORA_WEIGHT = "ip-adapter-faceid_sdxl_lora.safetensors"
 
 
 class DiffusersProvider(RuntimeProvider):
@@ -364,14 +366,14 @@ class DiffusersProvider(RuntimeProvider):
         logger.info("SDXL pipeline loaded in %.1fs", elapsed)
 
     def _ensure_faceid_loaded(self) -> None:
-        """Load FaceID PlusV2 adapter + LoRA into the SDXL pipeline."""
+        """Load FaceID adapter + LoRA into the SDXL pipeline."""
         if self._faceid_loaded:
             return
         if self._pipe is None or self._active_pipeline != "sdxl":
             raise RuntimeError("SDXL pipeline must be loaded first.")
 
         start = time.time()
-        logger.info("Loading FaceID PlusV2 adapter from %s", FACEID_REPO)
+        logger.info("Loading FaceID adapter from %s/%s", FACEID_REPO, FACEID_WEIGHT)
 
         try:
             self._pipe.load_ip_adapter(
@@ -394,9 +396,6 @@ class DiffusersProvider(RuntimeProvider):
                 logger.info("FaceID LoRA loaded and fused")
             except Exception as e:
                 logger.warning("FaceID LoRA loading failed (continuing without): %s", e)
-
-            # Re-register offload hooks after adapter loading
-            self._pipe.enable_model_cpu_offload()
 
             self._faceid_loaded = True
             elapsed = time.time() - start
@@ -428,11 +427,11 @@ class DiffusersProvider(RuntimeProvider):
         model_id: str = "sdxl-base-1.0",
         progress_callback: ProgressCallback | None = None,
     ):
-        """Generate image with SDXL + FaceID PlusV2 face identity conditioning.
+        """Generate image with SDXL + FaceID face identity conditioning.
 
         Uses InsightFace to extract ArcFace face embeddings from reference images,
-        then conditions SDXL generation via IP-Adapter FaceID PlusV2 for true
-        facial identity preservation.
+        then conditions SDXL generation via IP-Adapter FaceID for facial identity
+        preservation.
         """
         import torch
 
@@ -443,11 +442,11 @@ class DiffusersProvider(RuntimeProvider):
         )
         avg_embedding = self.face_extractor.compute_average_embedding(reference_image_paths)
 
-        # Convert to torch tensor: [1, 1, 512] shape expected by FaceID adapter
-        face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0).unsqueeze(0)
+        # Basic FaceID projection expects [batch, 512] shape
+        face_embed = torch.tensor(avg_embedding, dtype=torch.float16).unsqueeze(0)  # [1, 512]
         # Pipeline expects negative + positive stacked (splits via chunk(2))
         neg_embed = torch.zeros_like(face_embed)
-        face_embed = torch.cat([neg_embed, face_embed], dim=0)  # [2, 1, 512]
+        face_embed = torch.cat([neg_embed, face_embed], dim=0)  # [2, 512]
 
         # Load SDXL pipeline + FaceID adapter
         self._load_sdxl_pipeline(model_id)
@@ -458,9 +457,13 @@ class DiffusersProvider(RuntimeProvider):
 
         callback = self._make_pipeline_callback(progress_callback, steps) if progress_callback else None
 
+        # SDXL-appropriate defaults (different from FLUX)
+        sdxl_steps = max(steps, 20)  # SDXL needs at least 20 steps for good quality
+        sdxl_cfg = cfg if cfg > 1.0 else 5.0  # SDXL uses CFG 5-7, not FLUX's ~3.5
+
         logger.info(
-            "SDXL FaceID generating: prompt='%s' seed=%d steps=%d strength=%.2f",
-            prompt[:80], seed, steps, identity_strength,
+            "SDXL FaceID generating: prompt='%s' seed=%d steps=%d cfg=%.1f strength=%.2f",
+            prompt[:80], seed, sdxl_steps, sdxl_cfg, identity_strength,
         )
 
         start = time.time()
@@ -469,12 +472,12 @@ class DiffusersProvider(RuntimeProvider):
 
             result = self._pipe(
                 prompt=prompt,
-                negative_prompt=negative_prompt or "blurry, low quality, deformed",
+                negative_prompt=negative_prompt or "blurry, low quality, deformed, bad anatomy",
                 ip_adapter_image_embeds=[face_embed],
                 height=height,
                 width=width,
-                num_inference_steps=steps,
-                guidance_scale=cfg,
+                num_inference_steps=sdxl_steps,
+                guidance_scale=sdxl_cfg,
                 generator=generator,
                 callback_on_step_end=callback,
             )

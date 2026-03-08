@@ -225,11 +225,11 @@ class TestFaceIDRouting:
             generation_time_ms=5000,
             created_at="2026-03-08T00:00:00Z",
             inference_provider="diffusers",
-            resolved_adapter="sdxl-faceid-plusv2",
+            resolved_adapter="sdxl-faceid",
         )
         d = result.to_dict()
         assert d["inference_provider"] == "diffusers"
-        assert d["resolved_adapter"] == "sdxl-faceid-plusv2"
+        assert d["resolved_adapter"] == "sdxl-faceid"
         assert d["config"]["adapter_type"] == "faceid"
 
     def test_available_providers_includes_faceid(self):
