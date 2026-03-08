@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M5b — Multi-Runtime & IP-Adapter (in progress) | M6 (Pose & Composition Control) next
+## Current Phase: M5b → M5c — SDXL + FaceID for True Face Identity | M6 (Pose & Composition Control) next
 
 **Branch:** `feature/character-system`
 
@@ -328,6 +328,11 @@
 | `6fe0fad` | M5b | docs: multi-runtime research, IP-Adapter plan, requirements update |
 | `cd3730a` | M5b | feat(m5b): multi-provider routing + IP-Adapter adapter registry |
 | `7fe7e21` | M5b | feat(m5b): adapter type UI selector + provider status badges |
+| `0e0c7df` | M5b | feat: store inference_provider and resolved_adapter in generation metadata |
+| `1094fcc` | M5b | fix: re-register CPU offload hooks after IP-Adapter/CLIP encoder load |
+| `b49dca0` | M5b | fix: adapter download prompt race condition + generalize for all adapter types |
+| `d71636a` | M5b | fix: pass HF token to DiffusersProvider + improve reference image preprocessing |
+| `6094306` | M5b | docs: update status and plan for M5b progress (7/8 tasks done) |
 
 ### M5b Progress (Multi-Runtime & IP-Adapter)
 | Task | Status |
@@ -339,7 +344,20 @@
 | M5b-5: Adapter registry | ✅ |
 | M5b-6: Adapter type UI | ✅ |
 | M5b-7: Provider status | ✅ |
-| M5b-8: End-to-end testing | 🔲 Pending |
+| M5b-8: End-to-end testing | ⚠️ Functional but limited — XLabs IP-Adapter uses CLIP (not face identity) |
+
+**Key finding:** XLabs IP-Adapter v2 for FLUX uses CLIP embeddings (style/composition), NOT facial identity. Generated images don't preserve face likeness. This is an architectural limitation, not a bug. Solution: M5c adds SDXL + FaceID PlusV2 with InsightFace.
+
+### M5c Progress (SDXL + IP-Adapter FaceID)
+| Task | Status |
+|------|--------|
+| M5c-1: InsightFace integration | 🔲 Pending |
+| M5c-2: SDXL FaceID provider support | 🔲 Pending |
+| M5c-3: Orchestrator routing for FaceID | 🔲 Pending |
+| M5c-4: Adapter registry entries | 🔲 Pending |
+| M5c-5: FaceID adapter type UI | 🔲 Pending |
+| M5c-6: Adapter comparison UX | 🔲 Pending |
+| M5c-7: Testing and validation | 🔲 Pending |
 
 ### Test Counts
 - Python: 41 tests passing

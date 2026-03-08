@@ -528,3 +528,117 @@ This fits cleanly into our existing adapter management system (M5.6 Adapters tab
 - InsightFace ONNX Runtime + CoreML: https://github.com/deepinsight/insightface/issues/2238
 - Flux Apple Silicon performance guide: https://www.apatero.com/blog/flux-apple-silicon-m1-m2-m3-m4-complete-performance-guide-2025
 - PyTorch MPS backend: https://developer.apple.com/metal/pytorch/
+
+## 8d) SDXL + IP-Adapter FaceID — True Face Identity on Apple Silicon (March 2026)
+
+### Problem
+
+The XLabs IP-Adapter v2 for FLUX uses CLIP vision embeddings, which encode **semantic/style** features (composition, color palette, general appearance) but NOT facial identity. Testing confirmed that generated images "look nothing like" the reference photos — the adapter simply cannot preserve face-specific features because CLIP was never trained for that.
+
+### Solution: SDXL + IP-Adapter FaceID
+
+IP-Adapter FaceID (by h94/Tencent) replaces CLIP embeddings with **InsightFace face recognition embeddings** (512-dim ArcFace vectors). These embeddings encode facial geometry, proportions, and distinguishing features — exactly what's needed for character consistency.
+
+**Key insight:** While no FaceID adapter exists for FLUX, the h94 IP-Adapter FaceID PlusV2 for SDXL is mature, well-tested, and works on Apple Silicon via diffusers + PyTorch MPS.
+
+### Architecture: Three Adapter Paths
+
+Our multi-provider architecture can now support three character adapter types:
+
+| Adapter Type | Base Model | Embedding | Face Likeness | Speed | Provider |
+|---|---|---|---|---|---|
+| Redux | FLUX (mflux) | FLUX Redux | ⚠️ Style only | ⚡ Fast (~60s) | MLX |
+| IP-Adapter v2 | FLUX (diffusers) | CLIP ViT-L | ⚠️ Style/composition | 🐢 Slow (~3min) | Diffusers |
+| **FaceID PlusV2** | **SDXL (diffusers)** | **InsightFace ArcFace** | **✅ Strong identity** | **🐢 Moderate (~90s)** | **Diffusers** |
+
+### Component Stack
+
+1. **InsightFace** (`insightface` + `onnxruntime`)
+   - Face detection + ArcFace embedding extraction
+   - Uses ONNX Runtime with CoreML EP on Apple Silicon (hardware-accelerated)
+   - Model: `buffalo_l` (default, ~300MB download)
+   - Output: 512-dim normalized face embedding per image
+   - License: Non-commercial for open-source models
+
+2. **SDXL Base Model** (`stabilityai/stable-diffusion-xl-base-1.0`)
+   - Open-source, permissive CreativeML Open RAIL-M license
+   - ~6.5GB model weights
+   - Diffusers FluxPipeline replaced by StableDiffusionXLPipeline
+
+3. **IP-Adapter FaceID PlusV2 SDXL** (`h94/IP-Adapter-FaceID`)
+   - Weight file: `ip-adapter-faceid-plusv2_sdxl.bin` (~1.6GB)
+   - LoRA file: `ip-adapter-faceid-plusv2_sdxl_lora.safetensors` (~400MB)
+   - Combines InsightFace embedding + CLIP shortcut image features
+   - PlusV2 is the best variant: higher fidelity than v1, FaceID, or FaceID-Plus
+
+4. **CLIP Image Encoder** (reusable from existing IP-Adapter setup)
+   - FaceID PlusV2 uses both InsightFace embedding AND CLIP features
+   - `openai/clip-vit-large-patch14` already cached
+
+### Diffusers Integration
+
+```python
+from diffusers import StableDiffusionXLPipeline
+
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+)
+pipe.load_ip_adapter(
+    "h94/IP-Adapter-FaceID",
+    subfolder=None,
+    weight_name="ip-adapter-faceid-plusv2_sdxl.bin",
+)
+pipe.set_ip_adapter_scale(0.7)
+
+# Pass InsightFace embedding directly
+result = pipe(
+    prompt="portrait, studio lighting",
+    ip_adapter_image_embeds=[face_embedding_tensor],
+)
+```
+
+The `StableDiffusionXLPipeline.__call__` accepts `ip_adapter_image_embeds` — allowing us to pass pre-computed InsightFace embeddings rather than raw images. This is the FaceID pathway.
+
+### InsightFace on macOS Apple Silicon
+
+- ONNX Runtime now ships ARM64 wheels with CoreML EP built-in
+- `pip install insightface onnxruntime` works natively on Apple Silicon
+- CoreML provider accelerates face detection/embedding via Neural Engine
+- Fallback: CPU provider works but ~3x slower
+- The `buffalo_l` model auto-downloads on first use (~300MB)
+
+### Dependencies (New)
+
+| Package | Size | Purpose |
+|---|---|---|
+| `insightface` | ~50MB | Face detection + ArcFace embedding |
+| `onnxruntime` | ~30MB | ONNX inference runtime (CoreML EP on macOS) |
+| SDXL base model | ~6.5GB | Downloadable via adapter manager |
+| FaceID PlusV2 weights | ~1.6GB | Downloadable via adapter manager |
+| FaceID PlusV2 LoRA | ~400MB | Downloadable via adapter manager |
+
+### Trade-offs vs FLUX
+
+- **Quality:** SDXL produces excellent images but FLUX generally has better prompt adherence and detail
+- **Speed:** SDXL is faster than FLUX on diffusers/MPS (~90s vs ~200s for same step count)
+- **Identity:** FaceID PlusV2 provides dramatically better face likeness than any FLUX adapter
+- **Model size:** SDXL base is ~6.5GB (vs ~34GB for FLUX-dev in diffusers format)
+- **Resolution:** SDXL native at 1024x1024, same as our FLUX output
+
+### Recommendation
+
+Add SDXL + FaceID PlusV2 as the **third adapter type** (`"faceid"`). This gives users a clear choice:
+- **Redux** (FLUX/MLX): Fast, style-influenced, best for general character "vibe"
+- **IP-Adapter** (FLUX/diffusers): Style/composition transfer from reference
+- **FaceID** (SDXL/diffusers): True facial identity preservation ← **recommended for character consistency**
+
+The DiffusersProvider already handles model loading — we extend it to support StableDiffusionXLPipeline alongside FluxPipeline. The orchestrator routing adds a third path.
+
+### References
+- h94 IP-Adapter-FaceID: https://huggingface.co/h94/IP-Adapter-FaceID
+- SDXL base model: https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0
+- InsightFace GitHub: https://github.com/deepinsight/insightface
+- ONNX Runtime CoreML: https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html
+- Diffusers IP-Adapter docs: https://huggingface.co/docs/diffusers/using-diffusers/ip_adapter
+- FaceID PlusV2 examples: https://www.mybyways.com/blog/consistent-portraits-using-ip-adapters-for-sdxl

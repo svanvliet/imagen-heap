@@ -792,6 +792,120 @@ Show users which runtime providers are available and active.
 
 ---
 
+### Milestone 5c: SDXL + IP-Adapter FaceID — True Face Identity
+
+**Goal:** Add SDXL + IP-Adapter FaceID PlusV2 as a third adapter type, giving users true facial identity preservation via InsightFace face embeddings. This is the recommended adapter for character consistency across diverse scenes.
+
+> **Research reference:** See `docs/research.md` §8d for InsightFace macOS compatibility, FaceID PlusV2 architecture, and trade-off analysis.
+
+#### Why This Matters
+
+The XLabs IP-Adapter v2 for FLUX uses CLIP embeddings (semantic/style features), NOT facial identity. Testing confirmed generated images "look nothing like" reference photos. FaceID PlusV2 uses InsightFace ArcFace embeddings (512-dim face geometry vectors) which encode the actual distinguishing facial features needed for character consistency.
+
+#### Tasks
+
+**5c.1 — Python: InsightFace integration**
+
+Install InsightFace and ONNX Runtime. Create a face embedding extraction module.
+
+- `pip install insightface onnxruntime` (both have ARM64 native wheels)
+- New file: `python/src/imagen_heap/providers/face_embedding.py`
+  - `FaceEmbeddingExtractor` class wrapping `insightface.app.FaceAnalysis`
+  - Auto-download buffalo_l model on first use (~300MB)
+  - CoreML Execution Provider for Apple Neural Engine acceleration
+  - CPU fallback for older macOS or missing CoreML
+  - `extract_face_embedding(image) -> torch.Tensor` — returns 512-dim ArcFace vector
+  - `extract_face_embeddings(images) -> list[torch.Tensor]` — batch extraction
+  - Error handling: no face detected → clear error message
+  - Multiple faces → use largest face (closest to camera)
+- Unit tests: face detection, embedding shape, no-face error case
+
+**5c.2 — Python: SDXL FaceID PlusV2 provider support**
+
+Extend DiffusersProvider to support StableDiffusionXLPipeline with FaceID PlusV2 adapter.
+
+- Extend `DiffusersProvider` with SDXL pipeline support:
+  - `_load_sdxl_pipeline()` — loads `stabilityai/stable-diffusion-xl-base-1.0` with float16
+  - `_load_faceid_adapter()` — loads `h94/IP-Adapter-FaceID` weights + LoRA
+  - `text_to_image_with_faceid()` — generates using `ip_adapter_image_embeds` parameter
+  - FaceID PlusV2 uses both InsightFace embedding AND CLIP shortcut features
+- Memory management:
+  - Unload FLUX pipeline before loading SDXL (they can't coexist in memory)
+  - `enable_model_cpu_offload()` for SDXL pipeline
+  - Pipeline switching tracked by `self._active_pipeline` state
+- Adapter loading:
+  - `pipe.load_ip_adapter("h94/IP-Adapter-FaceID", weight_name="ip-adapter-faceid-plusv2_sdxl.bin")`
+  - Load FaceID LoRA: `ip-adapter-faceid-plusv2_sdxl_lora.safetensors`
+  - `set_ip_adapter_scale()` maps to character strength (0.0-1.0), default 0.7
+- Generation:
+  - Extract face embedding from reference images via FaceEmbeddingExtractor
+  - Pass as `ip_adapter_image_embeds` to pipeline __call__
+  - SDXL generates at 1024x1024 native resolution
+- Unit tests: pipeline loading, adapter loading, embedding passthrough
+
+**5c.3 — Python: Orchestrator routing for FaceID**
+
+Update PipelineOrchestrator to route `adapter_type="faceid"` to SDXL FaceID.
+
+- Add `"faceid"` to adapter_type routing in `_resolve_provider_for_character()`
+- FaceID → DiffusersProvider (same provider, different pipeline internally)
+- Update `generate()` to pass `pipeline_type="sdxl_faceid"` or similar discriminator
+- GenerationResult metadata: `inference_provider="diffusers"`, `resolved_adapter="sdxl-faceid-plusv2"`
+- `get_available_providers()` response includes faceid availability check (insightface installed + SDXL model available)
+- Graceful fallback: if InsightFace not installed, faceid not available
+- Unit tests: routing tests for faceid adapter type
+
+**5c.4 — Adapter registry: SDXL FaceID entries**
+
+Add SDXL FaceID downloadable entries to adapter management.
+
+- New `ADAPTER_REGISTRY` entries:
+  - `sdxl-base-1.0` — Stability AI SDXL base model (~6.5GB), type="model"
+  - `ip-adapter-faceid-plusv2-sdxl` — h94 FaceID PlusV2 weights (~1.6GB), requires_provider="diffusers"
+  - `ip-adapter-faceid-plusv2-sdxl-lora` — FaceID LoRA (~400MB), requires_provider="diffusers"
+  - `insightface-buffalo-l` — InsightFace buffalo_l model (~300MB), type="face_model"
+- Adapter download flow handles HuggingFace repos and ONNX model downloads
+- Estimated total new disk space: ~8.8GB
+
+**5c.5 — Frontend: FaceID adapter type option**
+
+Add FaceID as a fourth Identity Method option in the character dialog.
+
+- CharacterDialog "Identity Method" picker: add **FaceID** card
+  - Icon: face/shield icon to convey identity preservation
+  - Description: "True facial identity — best for consistent characters across diverse scenes"
+  - Badge: "SDXL" to indicate different base model
+  - Disabled with tooltip if InsightFace/SDXL not available
+- Update `Character.adapter_type` union: add `"faceid"` value
+- CharacterStrengthControl: "faceid" provider badge, strength default 0.7
+- `getRequiredAdapterIds()`: "faceid" → ["sdxl-base-1.0", "ip-adapter-faceid-plusv2-sdxl", "ip-adapter-faceid-plusv2-sdxl-lora", "insightface-buffalo-l"]
+- Adapter download prompt: show all required adapters with total size (~8.8GB)
+- Resolution note: output is 1024x1024 from SDXL (same as FLUX)
+
+**5c.6 — Frontend: Adapter comparison UX**
+
+Help users understand the three adapter types with clear, visual comparison.
+
+- Tooltip or info popover on Identity Method cards explaining trade-offs:
+  - Redux: "Fast, uses FLUX — captures style and general appearance"
+  - IP-Adapter: "Slower, uses FLUX — transfers composition and visual style from reference"
+  - FaceID: "Moderate speed, uses SDXL — **best for face likeness**. Recommended for character consistency."
+- First-time selection of FaceID shows brief explanation of required downloads
+- Generation output badge shows which provider/adapter was used
+
+**5c.7 — Testing and validation**
+
+- Unit tests: InsightFace extraction, SDXL pipeline, FaceID routing (target: 10+ new tests)
+- Integration test: generate image with FaceID on M3 Max
+- Visual comparison: same character + same prompt → compare Redux vs IP-Adapter vs FaceID output
+- Verify FLUX paths (standard, Redux, IP-Adapter) still work identically (no regression)
+- Test pipeline switching memory behavior (FLUX → SDXL → FLUX)
+- Test graceful degradation when InsightFace not installed
+
+**Deliverable:** Users can select "FaceID" as a character's identity method. When selected, reference images are processed through InsightFace for face embedding extraction, then passed to SDXL + IP-Adapter FaceID PlusV2. Generated images preserve the character's actual facial features across diverse prompts. All three adapter types coexist — the user chooses based on their priority (speed vs. style vs. face identity).
+
+---
+
 ### Milestone 6: Pose & Composition Control
 
 **Goal:** Users control pose via presets, reference images, and an interactive skeleton editor. ControlNet conditioning works.
@@ -1391,6 +1505,8 @@ M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) ✅ → M4 (Styles
                          ├→ M5 (Characters) ✅ ───────────────────┤
                          │       │                                │
                          │       └→ M5b (Multi-Runtime/IP-Adapter)┤
+                         │               │                        │
+                         │               └→ M5c (SDXL FaceID) ───┤
                          │                                        │
                          └→ M6 (Pose) ────────────────────────────┤
                                                                   │
@@ -1401,7 +1517,7 @@ M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) ✅ → M4 (Styles
                     M9 (Export & Polish) ←── all above ──────────┘
 ```
 
-M1 → M2 → M2b is strictly sequential. M3 was built in parallel with M2b. After M2b, milestones M4–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M5b depends on M5 (character system + adapter management must exist first). M9 is the integration and polish phase that depends on all others.
+M1 → M2 → M2b is strictly sequential. M3 was built in parallel with M2b. After M2b, milestones M4–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M5b depends on M5 (character system + adapter management must exist first). **M5c depends on M5b** (multi-provider routing and adapter management must exist first; extends DiffusersProvider with SDXL pipeline). M9 is the integration and polish phase that depends on all others.
 
 ---
 
