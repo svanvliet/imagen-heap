@@ -906,6 +906,71 @@ Help users understand the three adapter types with clear, visual comparison.
 
 ---
 
+### Milestone 5d: Character LoRA Training — True Identity Preservation
+
+**Goal:** Users can train a personalized LoRA from their character's reference photos, producing dramatically better facial likeness than any zero-shot adapter (FaceID, IP-Adapter, Redux). Trained LoRAs integrate into the existing character system as a fourth identity method.
+
+**Why:** IP-Adapter FaceID PlusV2 encodes faces into a 512-dim vector — too compressed for true likeness. LoRA fine-tunes the model itself to learn the person's exact face from thousands of gradient updates, capturing micro-details (eye spacing, nose shape, skin texture, wrinkle patterns) that adapters cannot.
+
+**Approach:** Hybrid strategy — keep all existing adapters (Redux/IP-Adapter/FaceID) as zero-training options, add LoRA as the "pro" quality tier.
+
+#### Phase 1: Manual LoRA Import + CLI Training (M5d-1 through M5d-4)
+
+The user trains a LoRA externally using the provided CLI scripts, then imports the resulting .safetensors file into a character card.
+
+**M5d-1 — CLI training scripts (validation)**
+- `scripts/setup-training.sh` — One-time setup of ai-toolkit training environment
+- `scripts/prepare-dataset.sh` — Dataset prep (copy/rename/caption reference photos)
+- `scripts/train-lora.sh` — Launch FLUX LoRA training with sensible defaults
+- `scripts/generate-from-lora.sh` — Test generation with the trained LoRA
+- User validates quality before any app integration code is written
+
+**M5d-2 — Python: LoRA inference integration**
+- DiffusersProvider: `text_to_image_with_lora(prompt, lora_path, lora_scale, ...)`
+- Load LoRA via `pipe.load_lora_weights(path)` for FLUX pipeline
+- Support LoRA scale 0.0–1.5 (mapped to character strength slider)
+- Unload LoRA when switching characters or adapters (memory management)
+- MLX/mflux: Check if mflux supports LoRA loading (would enable fast MLX inference with trained LoRAs)
+
+**M5d-3 — Frontend: LoRA as identity method**
+- CharacterCreateDialog: Add "Trained LoRA" as 5th identity method card
+- File picker to import .safetensors LoRA file
+- LoRA file stored in `~/.imagen-heap/characters/<id>/lora/` alongside character data
+- Character card shows "Trained LoRA" badge with file name and size
+- Trigger word field (defaults to "ohwx", user-configurable)
+- Trigger word auto-prepended to prompts when LoRA character is active
+
+**M5d-4 — Orchestrator: LoRA routing**
+- New adapter_type "lora" in GenerationConfig
+- Orchestrator routes to DiffusersProvider with LoRA path
+- LoRA strength mapped from character_strength slider (0.0–1.0 → 0.0–1.2 scale)
+- Metadata records: adapter_type=lora, lora_path, lora_scale, trigger_word
+
+#### Phase 2: In-App Training Wizard (M5d-5 through M5d-7) — Future
+
+**M5d-5 — Training wizard UI**
+- Step 1: Select/upload 15-50 reference photos with quality validation
+- Step 2: Auto-caption generation (using BLIP or manual review)
+- Step 3: Configure training (steps, trigger word, quality tier)
+- Step 4: Progress view with sample image previews during training
+
+**M5d-6 — Python: Training pipeline**
+- Wrap ai-toolkit training as a Python module callable from sidecar
+- Progress streaming via JSON-RPC notifications (step, loss, sample images)
+- Training runs in background thread, interruptible
+- Auto-save checkpoints, resume support
+
+**M5d-7 — Cloud training option**
+- Optional: Replicate/RunPod API integration for faster training (~20min vs 2-4hrs)
+- User provides API key, training runs in cloud, LoRA downloaded on completion
+- Cost estimate shown before starting (~$3-5 per training run)
+
+**Deliverable (Phase 1):** Users train a face LoRA via CLI scripts, import the .safetensors file into a character card, and generate images with dramatically better facial likeness. The trained LoRA integrates seamlessly with the existing generation pipeline and character system.
+
+**Deliverable (Phase 2):** One-click training wizard in the app with progress tracking, sample previews, and optional cloud acceleration.
+
+---
+
 ### Milestone 6: Pose & Composition Control
 
 **Goal:** Users control pose via presets, reference images, and an interactive skeleton editor. ControlNet conditioning works.
