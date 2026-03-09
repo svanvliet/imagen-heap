@@ -48,7 +48,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 echo "📦 Installing PyTorch (MPS-enabled)..."
-pip install --quiet torch torchvision
+pip install --quiet torch torchvision torchaudio
 
 echo "📦 Cloning ai-toolkit..."
 if [ -d "ai-toolkit" ]; then
