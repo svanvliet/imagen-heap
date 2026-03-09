@@ -142,10 +142,22 @@ class DiffusersProvider(RuntimeProvider):
             self._active_pipeline = None
             self._ip_adapter_loaded = False
             self._faceid_loaded = False
-            gc.collect()
-            if self._device == "mps":
-                self._torch.mps.empty_cache()
-            logger.debug("Diffusers model unloaded and cache cleared")
+
+        # Free CLIP ViT-H encoder when not needed (1.26 GB)
+        if self._clip_h_encoder is not None:
+            del self._clip_h_encoder
+            self._clip_h_encoder = None
+            self._clip_h_processor = None
+
+        # Free InsightFace face extractor
+        if self._face_extractor is not None:
+            del self._face_extractor
+            self._face_extractor = None
+
+        gc.collect()
+        if self._device == "mps":
+            self._torch.mps.empty_cache()
+        logger.debug("Diffusers model unloaded and cache cleared")
 
     def _ensure_ip_adapter_loaded(self) -> None:
         """Load the XLabs-AI IP-Adapter v2 weights into the pipeline."""

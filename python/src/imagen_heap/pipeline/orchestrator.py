@@ -219,7 +219,10 @@ class PipelineOrchestrator:
                         progress_callback=wrapped_progress,
                     )
                 elif hasattr(self.provider, 'text_to_image_with_character'):
-                    # Redux via MLX
+                    # Redux via MLX — free diffusers memory if loaded
+                    if self._diffusers_provider is not None and self._diffusers_provider._pipe is not None:
+                        logger.info("Unloading diffusers pipeline to free memory for MLX")
+                        self._diffusers_provider.unload_model()
                     inference_provider = "mlx"
                     resolved_adapter = "redux"
                     logger.info("Using Redux character mode (MLX) with %d reference images", len(reference_image_paths))
@@ -273,6 +276,10 @@ class PipelineOrchestrator:
                         progress_callback=wrapped_progress,
                     )
                 else:
+                    # Standard MLX text-to-image — free diffusers memory if loaded
+                    if self._diffusers_provider is not None and self._diffusers_provider._pipe is not None:
+                        logger.info("Unloading diffusers pipeline to free memory for MLX")
+                        self._diffusers_provider.unload_model()
                     result = self.provider.text_to_image(
                         prompt=config.prompt,
                         negative_prompt=config.negative_prompt,
