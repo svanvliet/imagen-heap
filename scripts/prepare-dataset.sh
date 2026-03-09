@@ -44,7 +44,8 @@ echo ""
 
 # Copy and rename images
 COUNT=0
-for img in "$SOURCE_DIR"/*.{jpg,jpeg,png,JPG,JPEG,PNG,heic,HEIC} 2>/dev/null; do
+shopt -s nullglob
+for img in "$SOURCE_DIR"/*.{jpg,jpeg,png,JPG,JPEG,PNG,heic,HEIC}; do
     [ -f "$img" ] || continue
     COUNT=$((COUNT + 1))
     EXT="${img##*.}"
