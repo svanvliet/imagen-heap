@@ -107,7 +107,7 @@ config:
         train_text_encoder: false
         gradient_checkpointing: true
         noise_scheduler: "flowmatch"
-        optimizer: "adamw8bit"
+        optimizer: "adamw"
         lr: 1e-4
         ema_config:
           use_ema: true
@@ -156,6 +156,9 @@ echo "   You can stop early with Ctrl+C if samples look good."
 echo ""
 echo "   Watch for sample outputs in: $OUTPUT_DIR/samples/"
 echo ""
+
+# Safety net: fall back to CPU for any MPS-unsupported ops
+export PYTORCH_ENABLE_MPS_FALLBACK=1
 
 # Set HF token for the training process
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
