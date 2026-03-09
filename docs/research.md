@@ -642,3 +642,99 @@ The DiffusersProvider already handles model loading — we extend it to support 
 - ONNX Runtime CoreML: https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html
 - Diffusers IP-Adapter docs: https://huggingface.co/docs/diffusers/using-diffusers/ip_adapter
 - FaceID PlusV2 examples: https://www.mybyways.com/blog/consistent-portraits-using-ip-adapters-for-sdxl
+
+---
+
+## 9) Character Identity: LoRA Training vs Zero-Shot Approaches
+
+### 9a) Why IP-Adapter FaceID produces mediocre likeness
+
+IP-Adapter FaceID (including PlusV2) works at **inference time** — it encodes a face into a 512-dim vector and uses it as conditioning. This captures general facial geometry (face shape, approximate proportions) but loses fine-grained details that make someone look like *them*:
+
+- **512 dimensions** is a very compressed representation of a face
+- The adapter was trained to generalize across all faces, not memorize any single one
+- PlusV2 adds CLIP shortcut features (skin texture, hair color, lighting) which helps, but still operates as a soft nudge rather than a hard identity lock
+- Identity strength above ~0.7 tends to produce artifacts rather than better likeness
+
+**Verdict:** Good for "someone who looks vaguely like X" — inadequate for "this IS person X."
+
+### 9b) LoRA training — the gold standard for face identity
+
+LoRA (Low-Rank Adaptation) fine-tunes the model itself to learn a specific person's face. The result is a small adapter file (50-200MB) that, when loaded, lets the model generate that exact person in any pose, scene, or style.
+
+**Why it works so much better:**
+- The model literally learns the person's face during training (thousands of gradient updates)
+- Captures micro-details: exact eye spacing, nose shape, skin texture, wrinkle patterns
+- Can be triggered by a simple keyword in the prompt (e.g., "photo of ohwx man")
+- Works across wildly different scenes and styles once trained
+
+**Two viable architectures for our app:**
+
+| Approach | Base Model | Training Tool | Training Time (M3 Max) | Quality |
+|----------|-----------|---------------|----------------------|---------|
+| **FLUX LoRA** | FLUX.1-dev | ai-toolkit / SimpleTuner | 2-4 hours | Excellent — FLUX has superior face rendering |
+| **SDXL LoRA** | SDXL 1.0 / RealVisXL | kohya-ss / sd-scripts | 1-3 hours | Very good — huge ecosystem, well-understood |
+
+### 9c) FLUX LoRA training (recommended)
+
+FLUX produces the best image quality of any open model, and LoRA training is well-supported:
+
+- **Tools:** [ai-toolkit](https://github.com/ostris/ai-toolkit) or [SimpleTuner](https://github.com/bghira/SimpleTuner)
+- **Dataset:** 15-30 high-quality photos of the subject (varied angles, lighting, expressions)
+- **Training:** ~1000-2000 steps, learning rate 1e-4, rank 16-32, batch size 1-2
+- **Output:** ~150MB .safetensors LoRA file
+- **Apple Silicon:** Works on M-series with PyTorch MPS, but slow (2-4 hours). Cloud training (RunPod, Replicate) takes 15-30 minutes and costs ~$2-5.
+- **Inference:** Load via diffusers `pipe.load_lora_weights()`, trigger with keyword
+
+**Advantage:** The LoRA works with our existing FLUX/mflux pipeline for fast MLX inference after training.
+
+### 9d) SDXL LoRA training (alternative)
+
+SDXL has a more mature training ecosystem:
+
+- **Tools:** [kohya-ss/sd-scripts](https://github.com/kohya-ss/sd-scripts) — battle-tested, excellent GUI
+- **Dataset:** 20-50 photos recommended
+- **Training:** ~1500-3000 steps, learning rate 1e-4 to 5e-5, rank 32-64
+- **Output:** ~50-150MB .safetensors LoRA file
+- **Apple Silicon:** Supported but slow. kohya-ss has the best Mac compatibility.
+- **Inference:** Works with our existing SDXL/DiffusersProvider pipeline
+
+### 9e) Recommended approach for Imagen Heap
+
+**Hybrid strategy:**
+
+1. **Keep FaceID PlusV2** as the "quick start / zero-training" option for casual use
+2. **Add LoRA training support** as the "pro" path for users who want true likeness:
+   - User provides 15-30 reference photos of their character
+   - App launches training (locally or offers cloud option)
+   - Trained LoRA is saved per-character and auto-loaded during generation
+   - Character card shows which adapter is active (FaceID vs trained LoRA)
+
+3. **LoRA at inference is trivial** — just `pipe.load_lora_weights("path/to/lora.safetensors")`
+4. **Training integration** can be phased:
+   - Phase 1: Manual LoRA import (user trains externally, imports .safetensors)
+   - Phase 2: Guided training wizard in-app (dataset prep, training, evaluation)
+   - Phase 3: One-click cloud training option
+
+### 9f) Dataset requirements for face LoRA training
+
+| Requirement | Details |
+|------------|---------|
+| **Quantity** | 15-30 images minimum (50+ for best results) |
+| **Resolution** | 1024×1024+ (will be resized/bucketed by trainer) |
+| **Variety** | Multiple angles, lighting conditions, expressions |
+| **Quality** | Sharp, well-lit, face clearly visible |
+| **Captions** | One .txt file per image: "photo of ohwx man, [description]" |
+| **Trigger word** | Unique token like "ohwx" that won't conflict with existing vocabulary |
+| **What to avoid** | Sunglasses, heavy makeup, group photos, low-res, duplicate poses |
+
+### 9g) References
+
+- ai-toolkit (FLUX LoRA): https://github.com/ostris/ai-toolkit
+- SimpleTuner: https://github.com/bghira/SimpleTuner
+- kohya-ss/sd-scripts (SDXL LoRA): https://github.com/kohya-ss/sd-scripts
+- CivitAI SDXL LoRA training guide: https://civitai.com/articles/9205
+- Flux LoRA settings guide: https://civitai.com/articles/7097
+- Training on Apple Silicon: https://www.reallyar.com/training-stable-diffusion-lora-on-apple-silicon-m2-mac-gpus-metal/
+- FluxGym (browser-based): https://github.com/cocktailpeanut/fluxgym
+- Segmind easy FLUX LoRA: https://blog.segmind.com/easy-flux-lora-training-guide/
