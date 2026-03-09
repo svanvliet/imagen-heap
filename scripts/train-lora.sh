@@ -116,8 +116,7 @@ config:
       model:
         name_or_path: "black-forest-labs/FLUX.1-dev"
         is_flux: true
-        quantize: true
-        qtype: "qint8"
+        quantize: false
       sample:
         sampler: "flowmatch"
         sample_every: 500
@@ -156,9 +155,6 @@ echo "   You can stop early with Ctrl+C if samples look good."
 echo ""
 echo "   Watch for sample outputs in: $OUTPUT_DIR/samples/"
 echo ""
-
-# Safety net: fall back to CPU for any MPS-unsupported ops
-export PYTORCH_ENABLE_MPS_FALLBACK=1
 
 # Set HF token for the training process
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
