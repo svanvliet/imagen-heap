@@ -116,6 +116,7 @@ config:
         name_or_path: "black-forest-labs/FLUX.1-dev"
         is_flux: true
         quantize: true
+        qtype: "qint8"
       sample:
         sampler: "flowmatch"
         sample_every: 500
