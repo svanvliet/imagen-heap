@@ -98,6 +98,7 @@ config:
           shuffle_tokens: false
           cache_latents_to_disk: true
           resolution: [ 512, 768, 1024 ]
+          num_workers: 0
       train:
         batch_size: 1
         steps: ${STEPS}
