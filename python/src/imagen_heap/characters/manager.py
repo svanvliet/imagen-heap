@@ -135,7 +135,7 @@ class CharacterManager:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
 
         # Only allow updating safe fields
-        allowed = {"name", "description", "adapter_type"}
+        allowed = {"name", "description", "adapter_type", "trigger_word"}
         for key in allowed:
             if key in updates:
                 meta[key] = updates[key]
@@ -226,6 +226,64 @@ class CharacterManager:
         meta["reference_images"] = images
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         return meta
+
+    def set_lora(self, character_id: str, lora_file_path: str, trigger_word: str = "ohwx") -> dict | None:
+        """Attach a LoRA .safetensors file to a character.
+
+        Copies the file into the character's lora/ directory and updates metadata.
+        """
+        char_dir = self.characters_dir / character_id
+        meta_path = char_dir / "metadata.json"
+        if not meta_path.exists():
+            return None
+
+        src = Path(lora_file_path)
+        if not src.exists():
+            raise ValueError(f"LoRA file not found: {lora_file_path}")
+
+        lora_dir = char_dir / "lora"
+        lora_dir.mkdir(exist_ok=True)
+        dest = lora_dir / "lora.safetensors"
+        shutil.copy2(str(src), str(dest))
+        logger.info("Copied LoRA %s → %s", src, dest)
+
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["lora_path"] = str(dest)
+        meta["lora_filename"] = src.name
+        meta["lora_file_size"] = dest.stat().st_size
+        meta["trigger_word"] = trigger_word
+        meta["adapter_type"] = "lora"
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        logger.info("Set LoRA for character %s (trigger=%s)", character_id, trigger_word)
+        return meta
+
+    def remove_lora(self, character_id: str) -> dict | None:
+        """Remove LoRA file and metadata from a character."""
+        char_dir = self.characters_dir / character_id
+        meta_path = char_dir / "metadata.json"
+        if not meta_path.exists():
+            return None
+
+        lora_dir = char_dir / "lora"
+        if lora_dir.exists():
+            shutil.rmtree(str(lora_dir))
+            logger.info("Removed LoRA directory for character %s", character_id)
+
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        for key in ("lora_path", "lora_filename", "lora_file_size", "trigger_word"):
+            meta.pop(key, None)
+        meta["adapter_type"] = "auto"
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        logger.info("Cleared LoRA metadata for character %s", character_id)
+        return meta
+
+    def get_lora_path(self, character_id: str) -> str | None:
+        """Return the LoRA .safetensors path if it exists on disk."""
+        char_dir = self.characters_dir / character_id
+        lora_file = char_dir / "lora" / "lora.safetensors"
+        if lora_file.exists():
+            return str(lora_file)
+        return None
 
     def get_reference_image_paths(self, character_id: str) -> list[str]:
         """Get validated reference image paths for a character.

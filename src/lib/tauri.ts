@@ -175,6 +175,22 @@ export async function getCharacter(characterId: string): Promise<Record<string, 
   return invoke("get_character", { characterId });
 }
 
+/** Set a LoRA file for a character */
+export async function setCharacterLora(
+  characterId: string,
+  loraPath: string,
+  triggerWord: string,
+): Promise<Record<string, unknown>> {
+  return invoke("set_character_lora", { characterId, loraPath, triggerWord });
+}
+
+/** Remove LoRA from a character */
+export async function removeCharacterLora(
+  characterId: string,
+): Promise<Record<string, unknown>> {
+  return invoke("remove_character_lora", { characterId });
+}
+
 // --- Adapter management ---
 
 /** Get available runtime providers */

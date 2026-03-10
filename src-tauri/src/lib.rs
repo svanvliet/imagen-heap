@@ -393,6 +393,26 @@ fn remove_reference_image(state: State<SidecarState>, character_id: String, imag
     }))
 }
 
+/// Set a LoRA file for a character
+#[tauri::command]
+fn set_character_lora(state: State<SidecarState>, character_id: String, lora_path: String, trigger_word: String) -> Result<serde_json::Value, String> {
+    info!("Command: set_character_lora id={}", character_id);
+    send_rpc(&state, "set_character_lora", serde_json::json!({
+        "character_id": character_id,
+        "lora_path": lora_path,
+        "trigger_word": trigger_word,
+    }))
+}
+
+/// Remove LoRA from a character
+#[tauri::command]
+fn remove_character_lora(state: State<SidecarState>, character_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: remove_character_lora id={}", character_id);
+    send_rpc(&state, "remove_character_lora", serde_json::json!({
+        "character_id": character_id,
+    }))
+}
+
 /// Reveal a model's folder in the system file manager
 #[tauri::command]
 fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle: AppHandle) -> Result<(), String> {
@@ -670,6 +690,8 @@ pub fn run() {
             get_character,
             add_reference_image,
             remove_reference_image,
+            set_character_lora,
+            remove_character_lora,
             get_available_providers,
             get_adapters,
             download_adapter,

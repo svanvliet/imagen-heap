@@ -36,3 +36,4 @@ src-tauri/target/
 datasets/
 output/
 .training-env/
+examples/loras/

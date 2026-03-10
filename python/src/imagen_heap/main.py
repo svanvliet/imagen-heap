@@ -328,6 +328,32 @@ def create_server() -> RpcServer:
             raise ValueError(f"Character not found: {character_id}")
         return result
 
+    # --- LoRA management ---
+
+    def handle_set_character_lora(params: dict) -> dict:
+        """Set a LoRA file for a character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        lora_path = params.get("lora_path", "")
+        if not lora_path:
+            raise ValueError("lora_path is required")
+        trigger_word = params.get("trigger_word", "ohwx")
+        result = character_manager.set_lora(character_id, lora_path, trigger_word)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    def handle_remove_character_lora(params: dict) -> dict:
+        """Remove LoRA from a character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        result = character_manager.remove_lora(character_id)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
     # --- Adapter management ---
 
     def handle_get_available_providers(params: dict) -> dict:
@@ -390,6 +416,8 @@ def create_server() -> RpcServer:
     server.register("get_character", handle_get_character)
     server.register("add_reference_image", handle_add_reference_image)
     server.register("remove_reference_image", handle_remove_reference_image)
+    server.register("set_character_lora", handle_set_character_lora)
+    server.register("remove_character_lora", handle_remove_character_lora)
 
     # Adapter management
     server.register("get_available_providers", handle_get_available_providers)
