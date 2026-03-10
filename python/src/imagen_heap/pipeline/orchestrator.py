@@ -29,7 +29,10 @@ class GenerationConfig:
     scheduler: str = "normal"
     character_id: str | None = None
     character_strength: float = 0.6
-    adapter_type: str = "auto"  # "auto", "redux", "ip-adapter", "faceid"
+    adapter_type: str = "auto"  # "auto", "redux", "ip-adapter", "faceid", "lora"
+    # LoRA-specific fields (resolved from character metadata)
+    lora_path: str | None = None
+    trigger_word: str | None = None
 
 
 @dataclass
@@ -42,7 +45,7 @@ class GenerationResult:
     generation_time_ms: int
     created_at: str
     inference_provider: str = "mlx"   # "mlx", "diffusers", "stub"
-    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter", "sdxl-faceid-plusv2"
+    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter", "sdxl-faceid-plusv2", "lora-mlx", "lora-diffusers"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -116,9 +119,13 @@ class PipelineOrchestrator:
     def _resolve_provider_for_character(self, config: GenerationConfig) -> str:
         """Determine which provider to use for a character generation.
 
-        Returns 'mlx' for Redux or 'diffusers' for IP-Adapter/FaceID.
+        Returns 'mlx' for Redux/LoRA or 'diffusers' for IP-Adapter/FaceID.
         """
         adapter_type = config.adapter_type
+
+        if adapter_type == "lora":
+            # LoRA prefers MLX (mflux has native LoRA support and is faster)
+            return "mlx"
 
         if adapter_type == "faceid":
             if self.diffusers_provider is not None and hasattr(self.diffusers_provider, 'is_faceid_available') and self.diffusers_provider.is_faceid_available():
@@ -174,7 +181,7 @@ class PipelineOrchestrator:
         try:
             use_character = (
                 config.character_id
-                and reference_image_paths
+                and (reference_image_paths or config.adapter_type == "lora")
             )
 
             inference_provider = "mlx"
@@ -183,7 +190,49 @@ class PipelineOrchestrator:
             if use_character:
                 provider_choice = self._resolve_provider_for_character(config)
 
-                if provider_choice == "diffusers" and config.adapter_type == "faceid" and self.diffusers_provider is not None:
+                if config.adapter_type == "lora" and config.lora_path:
+                    # LoRA character — prefer MLX, fallback to diffusers
+                    lora_scale = min(1.2, config.character_strength * 1.2)
+                    logger.info("Using LoRA: %s (scale=%.2f, provider=%s)", config.lora_path, lora_scale, provider_choice)
+
+                    if provider_choice == "mlx" and hasattr(self.provider, 'text_to_image_with_lora'):
+                        # Free diffusers memory if loaded
+                        if self._diffusers_provider is not None and self._diffusers_provider._pipe is not None:
+                            logger.info("Unloading diffusers pipeline to free memory for MLX LoRA")
+                            self._diffusers_provider.unload_model()
+                        inference_provider = "mlx"
+                        resolved_adapter = "lora-mlx"
+                        result = self.provider.text_to_image_with_lora(
+                            prompt=config.prompt,
+                            seed=config.seed,
+                            steps=config.steps,
+                            cfg=config.cfg,
+                            width=config.width,
+                            height=config.height,
+                            lora_path=config.lora_path,
+                            lora_scale=lora_scale,
+                            model_id=config.model_id,
+                            progress_callback=wrapped_progress,
+                        )
+                    elif self.diffusers_provider is not None and hasattr(self.diffusers_provider, 'text_to_image_with_lora'):
+                        inference_provider = "diffusers"
+                        resolved_adapter = "lora-diffusers"
+                        result = self.diffusers_provider.text_to_image_with_lora(
+                            prompt=config.prompt,
+                            seed=config.seed,
+                            steps=config.steps,
+                            cfg=config.cfg,
+                            width=config.width,
+                            height=config.height,
+                            lora_path=config.lora_path,
+                            lora_scale=lora_scale,
+                            model_id=config.model_id,
+                            progress_callback=wrapped_progress,
+                        )
+                    else:
+                        raise RuntimeError("No provider available for LoRA generation. MLX or diffusers required.")
+
+                elif provider_choice == "diffusers" and config.adapter_type == "faceid" and self.diffusers_provider is not None:
                     # FaceID via SDXL + InsightFace
                     inference_provider = "diffusers"
                     resolved_adapter = "sdxl-faceid-plusv2"

@@ -336,6 +336,68 @@ class DiffusersProvider(RuntimeProvider):
         except ImportError:
             return False
 
+    def text_to_image_with_lora(
+        self,
+        prompt: str,
+        seed: int,
+        steps: int,
+        cfg: float,
+        width: int,
+        height: int,
+        lora_path: str,
+        lora_scale: float = 1.0,
+        model_id: str | None = None,
+        progress_callback=None,
+    ) -> str:
+        """Generate image with a LoRA adapter via diffusers FluxPipeline.
+
+        This is a fallback path — prefer MLXProvider for LoRA generation.
+        Loads the LoRA weights into the FLUX pipeline, generates, then unfuses.
+        """
+        effective_model = model_id or self._loaded_model or "flux-dev-q8"
+
+        # Ensure FLUX pipeline is loaded
+        if self._pipe is None or self._active_pipeline != "flux":
+            self.load_model(effective_model)
+
+        logger.info(
+            "Generating with LoRA (diffusers): prompt='%s' seed=%d steps=%d lora=%s scale=%.2f",
+            prompt[:80], seed, steps, Path(lora_path).name, lora_scale,
+        )
+
+        start = time.time()
+        try:
+            # Load and fuse LoRA weights
+            self._pipe.load_lora_weights(lora_path)
+            self._pipe.fuse_lora(lora_scale=lora_scale)
+            logger.info("LoRA loaded and fused: %s (scale=%.2f)", Path(lora_path).name, lora_scale)
+
+            generator = self._torch.Generator(device="cpu").manual_seed(seed)
+            image = self._pipe(
+                prompt=prompt,
+                num_inference_steps=steps,
+                guidance_scale=cfg,
+                width=width,
+                height=height,
+                generator=generator,
+            ).images[0]
+
+            elapsed = time.time() - start
+            logger.info("LoRA diffusers generation complete in %.1fs", elapsed)
+
+            return image
+        except Exception:
+            logger.exception("LoRA diffusers generation failed")
+            raise
+        finally:
+            # Unfuse LoRA to restore base model state
+            try:
+                self._pipe.unfuse_lora()
+                self._pipe.unload_lora_weights()
+                logger.debug("LoRA unfused and unloaded")
+            except Exception:
+                logger.debug("LoRA cleanup failed", exc_info=True)
+
     def _load_sdxl_pipeline(self, model_id: str = "sdxl-base-1.0") -> None:
         """Load an SDXL-architecture pipeline, unloading FLUX if active.
 

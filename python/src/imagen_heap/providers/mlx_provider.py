@@ -35,8 +35,12 @@ class MLXProvider(RuntimeProvider):
     def __init__(self) -> None:
         self._flux = None
         self._flux_redux = None
+        self._flux_lora = None
         self._loaded_model: str | None = None
         self._loaded_redux_model: str | None = None
+        self._loaded_lora_path: str | None = None
+        self._loaded_lora_scale: float | None = None
+        self._loaded_lora_model: str | None = None
         self._quantize: int | None = None
         logger.info("MLXProvider initialized")
 
@@ -98,6 +102,12 @@ class MLXProvider(RuntimeProvider):
             logger.info("Unloading Redux model: %s", self._loaded_redux_model)
             self._flux_redux = None
             self._loaded_redux_model = None
+        if self._flux_lora is not None:
+            logger.info("Unloading LoRA model: %s", self._loaded_lora_path)
+            self._flux_lora = None
+            self._loaded_lora_path = None
+            self._loaded_lora_scale = None
+            self._loaded_lora_model = None
         gc.collect()
         try:
             import mlx.core as mx
@@ -213,6 +223,117 @@ class MLXProvider(RuntimeProvider):
         except Exception:
             logger.exception("Character generation failed")
             raise
+
+    def text_to_image_with_lora(
+        self,
+        prompt: str,
+        seed: int,
+        steps: int,
+        cfg: float,
+        width: int,
+        height: int,
+        lora_path: str,
+        lora_scale: float = 1.0,
+        model_id: str | None = None,
+        progress_callback: ProgressCallback | None = None,
+    ):
+        """Generate image with a LoRA adapter loaded via mflux.
+
+        mflux loads LoRA weights at model construction time, so we maintain
+        a separate Flux1 instance for LoRA generation. The LoRA model is
+        cached and reused if the same lora_path is requested again.
+        """
+        if not Path(lora_path).exists():
+            raise RuntimeError(f"LoRA file not found: {lora_path}")
+
+        effective_model = model_id or self._loaded_model
+        self._ensure_lora_loaded(effective_model, lora_path, lora_scale)
+
+        logger.info(
+            "Generating with LoRA: prompt='%s' seed=%d steps=%d lora=%s scale=%.2f",
+            prompt[:80], seed, steps, Path(lora_path).name, lora_scale,
+        )
+
+        if progress_callback:
+            self._register_progress_callback_on(self._flux_lora, progress_callback, steps)
+
+        start = time.time()
+        try:
+            image = self._flux_lora.generate_image(
+                seed=seed,
+                prompt=prompt,
+                num_inference_steps=steps,
+                width=width,
+                height=height,
+                guidance=cfg,
+            )
+            elapsed = time.time() - start
+            logger.info("LoRA generation complete in %.1fs", elapsed)
+            return image
+        except Exception:
+            logger.exception("LoRA generation failed")
+            raise
+
+    def _ensure_lora_loaded(self, model_id: str | None, lora_path: str, lora_scale: float) -> None:
+        """Load Flux1 with LoRA weights if not already loaded for the given path."""
+        if (
+            self._flux_lora is not None
+            and self._loaded_lora_path == lora_path
+            and self._loaded_lora_scale == lora_scale
+            and self._loaded_lora_model == model_id
+        ):
+            return
+
+        # Unload previous LoRA model to free memory
+        if self._flux_lora is not None:
+            logger.info("Unloading previous LoRA model")
+            self._flux_lora = None
+            gc.collect()
+
+        from mflux.models.flux.variants.txt2img.flux import Flux1
+        from mflux.models.common.config.model_config import ModelConfig
+
+        entry = get_model_by_id(model_id) if model_id else None
+        start = time.time()
+
+        try:
+            if entry and entry.is_mflux_saved:
+                logger.info("Loading LoRA with pre-quantized model: %s, lora=%s", model_id, Path(lora_path).name)
+                model_config = ModelConfig.from_name(entry.mflux_model_name)
+                self._flux_lora = Flux1(
+                    model_config=model_config,
+                    model_path=entry.hf_repo_id,
+                    lora_paths=[lora_path],
+                    lora_scales=[lora_scale],
+                )
+            elif model_id in MODEL_MAP:
+                model_name, quantize = MODEL_MAP[model_id]
+                logger.info("Loading LoRA: model=%s quantize=%d lora=%s", model_name, quantize, Path(lora_path).name)
+                model_config = ModelConfig.from_name(model_name)
+                self._flux_lora = Flux1(
+                    model_config=model_config,
+                    quantize=quantize,
+                    lora_paths=[lora_path],
+                    lora_scales=[lora_scale],
+                )
+            else:
+                logger.info("Loading LoRA with dev defaults (q8), lora=%s", Path(lora_path).name)
+                model_config = ModelConfig.from_name("dev")
+                self._flux_lora = Flux1(
+                    model_config=model_config,
+                    quantize=8,
+                    lora_paths=[lora_path],
+                    lora_scales=[lora_scale],
+                )
+        except Exception:
+            logger.exception("Failed to load LoRA model")
+            raise
+
+        self._loaded_lora_path = lora_path
+        self._loaded_lora_scale = lora_scale
+        self._loaded_lora_model = model_id
+        elapsed = time.time() - start
+        logger.info("LoRA model loaded in %.1fs", elapsed)
 
     def _ensure_redux_loaded(self, model_id: str | None) -> None:
         """Load Flux1Redux if not already loaded for the given model."""

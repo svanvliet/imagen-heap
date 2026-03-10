@@ -151,6 +151,22 @@ def create_server() -> RpcServer:
         # Resolve character reference images for Redux
         reference_image_paths = None
         if config.character_id:
+            # For LoRA characters, resolve LoRA path and trigger word from metadata
+            if config.adapter_type == "lora":
+                char_meta = character_manager.get_character(config.character_id)
+                if char_meta:
+                    config.lora_path = char_meta.get("lora_path")
+                    config.trigger_word = char_meta.get("trigger_word", "ohwx")
+                    if config.lora_path:
+                        # Auto-prepend trigger word to prompt if not already present
+                        tw = config.trigger_word or "ohwx"
+                        if tw.lower() not in config.prompt.lower():
+                            config.prompt = f"{tw}, {config.prompt}"
+                            logger.info("Auto-prepended trigger word '%s' to prompt", tw)
+                    else:
+                        logger.warning("LoRA character '%s' has no LoRA file, falling back to standard generation", config.character_id)
+                        config.adapter_type = "auto"
+
             reference_image_paths = character_manager.get_reference_image_paths(config.character_id)
             if reference_image_paths:
                 logger.info(
