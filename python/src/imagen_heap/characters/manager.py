@@ -227,7 +227,7 @@ class CharacterManager:
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         return meta
 
-    def set_lora(self, character_id: str, lora_file_path: str, trigger_word: str = "ohwx") -> dict | None:
+    def set_lora(self, character_id: str, lora_file_path: str, trigger_word: str = "") -> dict | None:
         """Attach a LoRA .safetensors file to a character.
 
         Copies the file into the character's lora/ directory and updates metadata.

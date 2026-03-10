@@ -158,9 +158,9 @@ def create_server() -> RpcServer:
                     config.lora_path = char_meta.get("lora_path")
                     config.trigger_word = char_meta.get("trigger_word", "ohwx")
                     if config.lora_path:
-                        # Auto-prepend trigger word to prompt if not already present
-                        tw = config.trigger_word or "ohwx"
-                        if tw.lower() not in config.prompt.lower():
+                        # Auto-prepend trigger word to prompt if provided and not already present
+                        tw = (config.trigger_word or "").strip()
+                        if tw and tw.lower() not in config.prompt.lower():
                             config.prompt = f"{tw}, {config.prompt}"
                             logger.info("Auto-prepended trigger word '%s' to prompt", tw)
                     else:

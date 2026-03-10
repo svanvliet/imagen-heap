@@ -42,7 +42,7 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
   const [loraFilePath, setLoraFilePath] = useState<string | null>(null);
   const [loraFileName, setLoraFileName] = useState<string>(character?.lora_filename ?? "");
   const [loraFileSize, setLoraFileSize] = useState<number>(character?.lora_file_size ?? 0);
-  const [triggerWord, setTriggerWord] = useState<string>(character?.trigger_word ?? "ohwx");
+  const [triggerWord, setTriggerWord] = useState<string>(character?.trigger_word ?? "");
   const hasExistingLora = isEditMode && !!character?.lora_path;
 
   const nameRef = useRef<HTMLInputElement>(null);
@@ -168,7 +168,7 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
           updates.description = description.trim();
         if (adapterType !== (character.adapter_type ?? "auto"))
           updates.adapter_type = adapterType;
-        if (triggerWord !== (character.trigger_word ?? "ohwx"))
+        if (triggerWord !== (character.trigger_word ?? ""))
           updates.trigger_word = triggerWord;
         if (Object.keys(updates).length > 0) {
           await updateCharacter(character.id, updates);
@@ -230,7 +230,7 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
     ? name.trim() !== character?.name ||
       description.trim() !== character?.description ||
       adapterType !== (character?.adapter_type ?? "auto") ||
-      triggerWord !== (character?.trigger_word ?? "ohwx") ||
+      triggerWord !== (character?.trigger_word ?? "") ||
       loraFilePath !== null ||
       removedIndices.size > 0 ||
       addedPaths.length > 0
@@ -404,13 +404,13 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
                 {/* Trigger word */}
                 <div>
                   <label className="text-[10px] text-text-secondary mb-1 block">
-                    Trigger word <span className="text-text-secondary/50">(auto-added to prompts)</span>
+                    Trigger word <span className="text-text-secondary/50">(optional — auto-added to prompts)</span>
                   </label>
                   <input
                     type="text"
                     value={triggerWord}
                     onChange={(e) => setTriggerWord(e.target.value)}
-                    placeholder="ohwx"
+                    placeholder="e.g. ohwx — leave blank for style LoRAs"
                     className="w-full px-2.5 py-1.5 bg-bg-primary border border-border-default rounded-md text-xs text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 font-mono"
                   />
                 </div>

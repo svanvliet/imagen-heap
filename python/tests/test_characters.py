@@ -41,7 +41,7 @@ class TestSetLora:
 
         assert result is not None
         assert result["adapter_type"] == "lora"
-        assert result["trigger_word"] == "ohwx"
+        assert result["trigger_word"] == ""
         assert result["lora_filename"] == "my_lora_v1.safetensors"
         assert result["lora_file_size"] == 256
         assert result["lora_path"].endswith("lora.safetensors")
