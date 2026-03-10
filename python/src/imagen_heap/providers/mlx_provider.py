@@ -130,6 +130,15 @@ class MLXProvider(RuntimeProvider):
         if self._flux is None:
             raise RuntimeError("No model loaded. Call load_model() first.")
 
+        # Free LoRA model memory if loaded — can't keep two full models in memory
+        if self._flux_lora is not None:
+            logger.info("Unloading LoRA model to free memory for standard generation")
+            self._flux_lora = None
+            self._loaded_lora_path = None
+            self._loaded_lora_scale = None
+            self._loaded_lora_model = None
+            gc.collect()
+
         logger.info(
             "Generating: prompt='%s' seed=%d steps=%d cfg=%.1f size=%dx%d",
             prompt[:80], seed, steps, cfg, width, height,
@@ -246,7 +255,15 @@ class MLXProvider(RuntimeProvider):
         if not Path(lora_path).exists():
             raise RuntimeError(f"LoRA file not found: {lora_path}")
 
-        effective_model = model_id or self._loaded_model
+        # Free base model memory — LoRA model is a complete standalone instance
+        if self._flux is not None:
+            logger.info("Unloading base model to free memory for LoRA generation")
+            self._flux = None
+            self._loaded_model = None
+            self._quantize = None
+            gc.collect()
+
+        effective_model = model_id or self._loaded_model or "flux-dev-q8"
         self._ensure_lora_loaded(effective_model, lora_path, lora_scale)
 
         logger.info(
