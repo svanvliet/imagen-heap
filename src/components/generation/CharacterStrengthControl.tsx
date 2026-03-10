@@ -31,6 +31,8 @@ function getRequiredAdapterIds(adapterType: string): string[] {
       return ["flux-ip-adapter-v2", "clip-vit-large-patch14"];
     case "redux":
       return ["flux-redux-dev"];
+    case "lora":
+      return []; // LoRA files are imported — no adapter download needed
     case "auto":
     default:
       return ["flux-redux-dev"]; // auto defaults to Redux
@@ -43,6 +45,7 @@ function adapterLabel(adapterType: string): string {
     case "faceid": return "FaceID adapter";
     case "ip-adapter": return "IP-Adapter";
     case "redux": return "Redux adapter";
+    case "lora": return "Trained LoRA";
     default: return "Redux adapter";
   }
 }
@@ -70,6 +73,7 @@ export function CharacterStrengthControl() {
 
   // Determine which adapters are needed and which are missing
   const effectiveType = character.adapter_type ?? "auto";
+  const isLoraType = effectiveType === "lora";
 
   // FaceID uses SDXL — check if SDXL model is available and selected
   const isFaceIdType = effectiveType === "faceid";
@@ -79,9 +83,13 @@ export function CharacterStrengthControl() {
 
   const isModelCompatible = isFaceIdType
     ? isSdxlSelected
-    : selectedModelId
-      ? REDUX_COMPATIBLE_PREFIXES.some((p) => selectedModelId.startsWith(p))
-      : false;
+    : isLoraType
+      ? selectedModelId
+        ? REDUX_COMPATIBLE_PREFIXES.some((p) => selectedModelId.startsWith(p))
+        : false
+      : selectedModelId
+        ? REDUX_COMPATIBLE_PREFIXES.some((p) => selectedModelId.startsWith(p))
+        : false;
   const requiredIds = getRequiredAdapterIds(effectiveType);
   const missingAdapterIds = requiredIds.filter(
     (id) => !adapters.some((a) => a.id === id && a.status === "downloaded"),
@@ -226,12 +234,28 @@ export function CharacterStrengthControl() {
         </div>
       )}
 
-      {/* Model compatibility — FaceID needs SDXL, others need FLUX-dev */}
-      {allAdaptersReady && !isFaceIdType && !isModelCompatible && (
+      {/* Model compatibility — FaceID needs SDXL, LoRA needs FLUX-dev, others need FLUX-dev */}
+      {allAdaptersReady && !isFaceIdType && !isLoraType && !isModelCompatible && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
           <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
           <span className="text-[10px] text-amber-300 leading-tight">
             Character mode requires a FLUX.1-dev model. Switch in Model settings above.
+          </span>
+        </div>
+      )}
+      {isLoraType && !isModelCompatible && (
+        <div className="flex items-start gap-1.5 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
+          <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
+          <span className="text-[10px] text-amber-300 leading-tight">
+            LoRA characters require a FLUX.1-dev model. Switch in Model settings above.
+          </span>
+        </div>
+      )}
+      {isLoraType && isModelCompatible && (
+        <div className="flex items-start gap-1.5 px-2 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-md">
+          <Check size={12} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+          <span className="text-[10px] text-emerald-300 leading-tight">
+            Ready — LoRA character with fast MLX inference.
           </span>
         </div>
       )}
@@ -268,11 +292,21 @@ export function CharacterStrengthControl() {
       {/* Character info + provider badge */}
       <div className="flex items-center justify-between">
         <span className="text-xs text-text-secondary">
-          {character.reference_images.length} reference{" "}
-          {character.reference_images.length === 1 ? "image" : "images"}
+          {isLoraType ? (
+            <>LoRA · trigger: <span className="font-mono text-text-primary">{character.trigger_word || "ohwx"}</span></>
+          ) : (
+            <>{character.reference_images.length} reference{" "}
+            {character.reference_images.length === 1 ? "image" : "images"}</>
+          )}
         </span>
         <span className="text-[10px] text-text-secondary/60 uppercase tracking-wider flex items-center gap-1">
-          {effectiveType === "faceid" ? (
+          {effectiveType === "lora" ? (
+            <>
+              <Check size={9} className="text-success" />
+              <span className="text-emerald-400">✦</span>
+              lora
+            </>
+          ) : effectiveType === "faceid" ? (
             <>
               {allAdaptersReady && <Check size={9} className="text-success" />}
               <span className="text-emerald-400">◉</span>

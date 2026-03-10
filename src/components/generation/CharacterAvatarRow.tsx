@@ -3,7 +3,7 @@
  * Shows circular thumbnails with accent ring on selection, "None" and "+" buttons.
  */
 import { useEffect, useRef, useState } from "react";
-import { Plus, User, X, Trash2, Pencil } from "lucide-react";
+import { Plus, User, X, Trash2, Pencil, Wand2 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCharacterStore } from "@/stores/characters";
 import { cn } from "@/lib/utils";
@@ -84,36 +84,47 @@ export function CharacterAvatarRow({ onCreateClick, onEditClick }: CharacterAvat
         {/* Character avatars */}
         {characters.map((char) => {
           const isSelected = selectedId === char.id;
+          const isLora = char.adapter_type === "lora";
           const thumbSrc = char.thumbnail
             ? convertFileSrc(char.thumbnail)
             : null;
 
           return (
-            <button
-              key={char.id}
-              onClick={() => selectCharacter(char.id)}
-              onDoubleClick={() => onEditClick(char.id)}
-              onContextMenu={(e) => handleContextMenu(e, char.id)}
-              className={cn(
-                "flex-shrink-0 w-10 h-10 rounded-full border-2 overflow-hidden transition-all",
-                isSelected
-                  ? "border-accent ring-2 ring-accent/30 scale-110"
-                  : "border-border-default hover:border-zinc-500 hover:scale-105",
-              )}
-              title={char.name}
-            >
-              {thumbSrc ? (
-                <img
-                  src={thumbSrc}
-                  alt={char.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-bg-hover flex items-center justify-center">
-                  <User size={16} className="text-text-secondary" />
+            <div key={char.id} className="relative flex-shrink-0">
+              <button
+                onClick={() => selectCharacter(char.id)}
+                onDoubleClick={() => onEditClick(char.id)}
+                onContextMenu={(e) => handleContextMenu(e, char.id)}
+                className={cn(
+                  "w-10 h-10 rounded-full border-2 overflow-hidden transition-all",
+                  isSelected
+                    ? "border-accent ring-2 ring-accent/30 scale-110"
+                    : "border-border-default hover:border-zinc-500 hover:scale-105",
+                )}
+                title={char.name}
+              >
+                {thumbSrc ? (
+                  <img
+                    src={thumbSrc}
+                    alt={char.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-bg-hover flex items-center justify-center">
+                    {isLora ? (
+                      <Wand2 size={14} className="text-emerald-400" />
+                    ) : (
+                      <User size={16} className="text-text-secondary" />
+                    )}
+                  </div>
+                )}
+              </button>
+              {isLora && (
+                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-bg-secondary flex items-center justify-center" title="Trained LoRA">
+                  <Wand2 size={7} className="text-white" />
                 </div>
               )}
-            </button>
+            </div>
           );
         })}
 
