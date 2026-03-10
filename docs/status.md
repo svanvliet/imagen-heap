@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M5d — LoRA Character Identity (Import & Inference) | M6 (Pose & Composition Control) next
+## Current Phase: M5d ✅ Complete — LoRA Character Identity (Import & Inference) | M6 (Pose & Composition Control) next
 
 **Branch:** `feature/character-system`
 
@@ -377,3 +377,14 @@
 | M5d-3: Frontend — LoRA identity method UI | ✅ Done |
 | M5d-4: Python — LoRA inference (MLX + diffusers) | ✅ Done |
 | M5d-5: Orchestrator — LoRA routing | ✅ Done |
+
+### Post-M5d Fixes & Improvements
+
+| Fix | Description |
+|-----|-------------|
+| Dialog freeze | Removed backend `getAvailableProviders` RPC from character dialog — it triggered heavy imports (torch, diffusers, insightface) on the main thread. Dialog is now pure metadata, opens instantly. |
+| Identity method UX | Replaced cramped 5-column button grid with clean `<select>` dropdown for adapter type selection. |
+| Trigger word optional | Trigger word defaults to empty (was "ohwx"). Style LoRAs don't need one — only character LoRAs trained with a trigger word require it. |
+| Memory thrashing | Standard and LoRA generation now unload competing model instances before loading. Two full FLUX models (~16GB each) in memory simultaneously caused swap thrashing and ~20s/step performance. |
+| Pre-quantized FLUX.1-dev | Added `flux-dev-mflux-q8` (dhairyashil/FLUX.1-dev-mflux-8bit, ~18GB) as a pre-quantized model. The existing `flux-dev-q8` downloads full bf16 weights (~33GB) and quantizes on-the-fly, resulting in ~20s/step. Pre-quantized model restores expected ~2-4s/step. Quality button auto-selects mflux variants when available. |
+| Provider checks lightweight | `is_available()` checks for diffusers and face_embedding now use `importlib.util.find_spec()` instead of importing heavy modules. Results cached after first call. |

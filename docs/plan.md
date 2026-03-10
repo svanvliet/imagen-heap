@@ -916,7 +916,7 @@ Help users understand the three adapter types with clear, visual comparison.
 
 **Approach:** Hybrid strategy — keep all existing adapters (Redux/IP-Adapter/FaceID) as zero-training options, add LoRA as the "pro" quality tier with external training.
 
-#### Phase 1: LoRA Import + Inference (M5d-1 through M5d-5) — CURRENT
+#### Phase 1: LoRA Import + Inference (M5d-1 through M5d-5) — ✅ COMPLETE
 
 **M5d-1 — CLI training scripts ✅ DONE**
 - `scripts/setup-training.sh` — One-time setup of ai-toolkit training environment
@@ -930,7 +930,7 @@ Help users understand the three adapter types with clear, visual comparison.
   - `lora_path`: path to .safetensors file stored in character dir
   - `lora_filename`: original filename for display
   - `lora_file_size`: file size in bytes for display
-  - `trigger_word`: prompt keyword that activates identity (default "ohwx")
+  - `trigger_word`: prompt keyword that activates identity (optional, empty by default — only needed for character LoRAs trained with a trigger word)
 - CharacterManager: copy imported .safetensors into `~/.imagen-heap/characters/<id>/lora/`
 - CharacterManager: new methods `set_lora(character_id, lora_file_path, trigger_word)` and `remove_lora(character_id)`
 - Update `update_character` to accept `trigger_word` updates
@@ -995,7 +995,7 @@ Help users understand the three adapter types with clear, visual comparison.
 - User provides API key, training runs in cloud, LoRA downloaded on completion
 - Cost estimate shown before starting (~$3-5 per training run)
 
-**Deliverable (Phase 1):** Users train a face LoRA externally (PC with GPU, cloud, or CLI scripts), import the .safetensors file into a character card via the app UI, and generate images with dramatically better facial likeness using the fast MLX path. The trained LoRA integrates seamlessly with the existing generation pipeline and character system.
+**Deliverable (Phase 1):** ✅ Users train a face LoRA externally (PC with GPU, cloud, or CLI scripts), import the .safetensors file into a character card via the app UI, and generate images with dramatically better facial likeness using the fast MLX path. The trained LoRA integrates seamlessly with the existing generation pipeline and character system. Identity method selection uses a clean dropdown (not a grid). Trigger word is optional (style LoRAs don't need one). A pre-quantized FLUX.1-dev model (`flux-dev-mflux-q8`) is available for fast native inference (~2-4s/step vs ~20s/step with on-the-fly quantization). Memory management ensures only one full model is in memory at a time.
 
 **Deliverable (Phase 2):** One-click training wizard in the app with progress tracking, sample previews, and optional cloud acceleration.
 
