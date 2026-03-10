@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette, Trash2, User } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { cancelGeneration } from "@/lib/tauri";
 import { STYLE_PRESETS } from "@/lib/constants";
 
 function ElapsedTimer() {
@@ -24,8 +25,7 @@ export function Canvas() {
   const isGenerating = useGenerationStore((s) => s.isGenerating);
   const progress = useGenerationStore((s) => s.progress);
   const generationError = useGenerationStore((s) => s.generationError);
-  const setGenerating = useGenerationStore((s) => s.setGenerating);
-  const setProgress = useGenerationStore((s) => s.setProgress);
+  const viewingProgress = useGenerationStore((s) => s.viewingProgress);
   const deleteHistoryItem = useGenerationStore((s) => s.deleteHistoryItem);
 
   const [copied, setCopied] = useState(false);
@@ -134,7 +134,7 @@ export function Canvas() {
       className="flex-1 flex flex-col items-center justify-center bg-bg-primary p-6 min-h-0 relative"
       onContextMenu={handleContextMenu}
     >
-      {isGenerating ? (
+      {isGenerating && viewingProgress ? (
         /* Generation in progress — show live preview or progress */
         <div className="flex flex-col items-center gap-4 animate-fade-in relative">
           {previewSrc ? (
@@ -154,8 +154,8 @@ export function Canvas() {
                   <ElapsedTimer />
                 </span>
                 <button
-                  onClick={() => { setGenerating(false); setProgress(null); }}
-                  className="p-0.5 rounded-full hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors"
+                  onClick={() => { cancelGeneration().catch(() => {}); }}
+                  className="p-0.5 rounded-full hover:bg-bg-hover text-text-muted hover:text-red-400 transition-colors"
                   title="Cancel generation"
                 >
                   <X size={12} />
@@ -200,6 +200,12 @@ export function Canvas() {
                   <ElapsedTimer />
                 </div>
               </div>
+              <button
+                onClick={() => { cancelGeneration().catch(() => {}); }}
+                className="mt-1 px-3 py-1 text-xs text-text-muted hover:text-red-400 transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           )}
         </div>

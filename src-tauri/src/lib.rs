@@ -250,6 +250,20 @@ async fn generate_image(state: State<'_, SidecarState>, config: serde_json::Valu
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Cancel the current generation (short timeout — fire and forget)
+#[tauri::command]
+fn cancel_generation(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: cancel_generation");
+    send_rpc_raw(
+        &state.next_id,
+        &state.pending,
+        &state.writer,
+        "cancel_generation",
+        serde_json::json!({}),
+        5,
+    )
+}
+
 /// Get all models with status
 #[tauri::command]
 fn get_models(state: State<SidecarState>) -> Result<serde_json::Value, String> {
@@ -680,6 +694,7 @@ pub fn run() {
             ping_backend,
             get_backend_status,
             generate_image,
+            cancel_generation,
             get_models,
             is_first_run,
             get_default_downloads,

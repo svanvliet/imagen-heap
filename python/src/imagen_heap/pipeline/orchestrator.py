@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,6 +12,11 @@ from typing import Any
 from imagen_heap.providers import RuntimeProvider, StubProvider
 
 logger = logging.getLogger(__name__)
+
+
+class GenerationCancelled(Exception):
+    """Raised when a generation is cancelled by the user."""
+    pass
 
 
 @dataclass
@@ -84,7 +90,17 @@ class PipelineOrchestrator:
         self.provider = provider or StubProvider()
         self._diffusers_provider = None  # Lazy-loaded secondary provider
         self._current_job_id: str | None = None
+        self._cancel_event = threading.Event()
         logger.info("PipelineOrchestrator initialized, output_dir=%s", self.output_dir)
+
+    def cancel(self) -> None:
+        """Request cancellation of the current generation."""
+        self._cancel_event.set()
+        logger.info("Cancellation requested for job=%s", self._current_job_id)
+
+    def is_cancelled(self) -> bool:
+        """Check if cancellation has been requested."""
+        return self._cancel_event.is_set()
 
     @property
     def diffusers_provider(self):
@@ -175,11 +191,14 @@ class PipelineOrchestrator:
         """
         job_id = str(uuid.uuid4())[:8]
         self._current_job_id = job_id
+        self._cancel_event.clear()
         logger.info("Starting generation job=%s prompt='%s' steps=%d", job_id, config.prompt[:50], config.steps)
 
         start_time = time.time()
 
         def wrapped_progress(step: int, total: int, preview: str | None) -> None:
+            if self._cancel_event.is_set():
+                raise GenerationCancelled("Generation cancelled by user")
             if progress_callback:
                 progress_callback(job_id, step, total, preview)
 

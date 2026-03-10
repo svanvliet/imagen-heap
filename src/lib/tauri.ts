@@ -18,6 +18,11 @@ export async function getBackendStatus(): Promise<string> {
   return invoke("get_backend_status");
 }
 
+/** Cancel the current generation */
+export async function cancelGeneration(): Promise<void> {
+  await invoke("cancel_generation");
+}
+
 /** Request image generation */
 export async function generateImage(config: {
   prompt: string;

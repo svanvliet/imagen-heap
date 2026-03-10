@@ -5,7 +5,7 @@ import { useModelStore } from "@/stores/models";
 import { useBackendStore } from "@/stores/backend";
 import { usePromptHistoryStore } from "@/stores/promptHistory";
 import { useCharacterStore } from "@/stores/characters";
-import { generateImage } from "@/lib/tauri";
+import { generateImage, cancelGeneration } from "@/lib/tauri";
 import { randomSeed } from "@/lib/utils";
 
 interface ProgressPayload {
@@ -23,6 +23,7 @@ export function useGeneration() {
   const setProgress = useGenerationStore((s) => s.setProgress);
   const setCurrentImage = useGenerationStore((s) => s.setCurrentImage);
   const setGenerationError = useGenerationStore((s) => s.setGenerationError);
+  const cancelGenerationStore = useGenerationStore((s) => s.cancelGeneration);
   const backendStatus = useBackendStore((s) => s.status);
   const selectedModelId = useModelStore((s) => s.selectedModelId);
 
@@ -113,8 +114,20 @@ export function useGeneration() {
     }
   }, [setGenerating, setProgress, setCurrentImage, setGenerationError]);
 
+  const cancel = useCallback(async () => {
+    cancelGenerationStore();
+    try {
+      await cancelGeneration();
+    } catch (err) {
+      console.error("[useGeneration] Cancel RPC failed:", err);
+    }
+    setGenerating(false);
+    setProgress(null);
+  }, [cancelGenerationStore, setGenerating, setProgress]);
+
   return {
     generate,
+    cancel,
     canGenerate: backendStatus === "connected" && !!selectedModelId,
   };
 }

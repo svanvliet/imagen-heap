@@ -18,7 +18,7 @@ from pathlib import Path
 from imagen_heap import __version__
 from imagen_heap.rpc.server import RpcServer
 from imagen_heap.providers import StubProvider
-from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig
+from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig, GenerationCancelled
 from imagen_heap.models.manager import ModelManager
 from imagen_heap.characters.manager import CharacterManager
 from imagen_heap.adapters.manager import AdapterManager
@@ -198,8 +198,17 @@ def create_server() -> RpcServer:
                 "preview_base64": preview,
             })
 
-        result = orchestrator.generate(config, progress_callback=on_progress, reference_image_paths=reference_image_paths)
-        return result.to_dict()
+        try:
+            result = orchestrator.generate(config, progress_callback=on_progress, reference_image_paths=reference_image_paths)
+            return result.to_dict()
+        except GenerationCancelled:
+            logger.info("Generation cancelled by user")
+            raise ValueError("Generation cancelled")
+
+    def handle_cancel_generation(params: dict) -> dict:
+        """Cancel the current generation."""
+        orchestrator.cancel()
+        return {"success": True}
 
     # --- Model management methods ---
 
@@ -412,6 +421,7 @@ def create_server() -> RpcServer:
     server.register("get_device_info", handle_get_device_info)
     server.register("get_memory_status", handle_get_memory_status)
     server.register("generate", handle_generate, background=True)
+    server.register("cancel_generation", handle_cancel_generation)
     server.register("get_models", handle_get_models)
     server.register("get_downloaded_models", handle_get_downloaded_models)
     server.register("get_default_downloads", handle_get_default_downloads)
