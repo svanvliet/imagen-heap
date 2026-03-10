@@ -3,7 +3,7 @@
  * Create mode: empty form, creates new character on submit.
  * Edit mode: pre-populated from existing character, saves changes incrementally.
  */
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { X, Upload, ImagePlus, Trash2, Sparkles, Pencil, Cpu, FileBox, Wand2 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -37,7 +37,6 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
   const [adapterType, setAdapterType] = useState<"auto" | "redux" | "ip-adapter" | "faceid" | "lora">(
     (character?.adapter_type as "auto" | "redux" | "ip-adapter" | "faceid" | "lora") ?? "auto",
   );
-  const [providers, setProviders] = useState<{ mlx: boolean; diffusers: boolean; faceid: boolean }>({ mlx: true, diffusers: false, faceid: false });
 
   // LoRA-specific state
   const [loraFilePath, setLoraFilePath] = useState<string | null>(null);
@@ -47,16 +46,6 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
   const hasExistingLora = isEditMode && !!character?.lora_path;
 
   const nameRef = useRef<HTMLInputElement>(null);
-
-  // Check which providers are available (non-blocking — defaults if timeout)
-  useEffect(() => {
-    api.getAvailableProviders()
-      .then(setProviders)
-      .catch(() => {
-        // On timeout or error, assume all providers available — user will see errors at generation time
-        setProviders({ mlx: true, diffusers: true, faceid: true });
-      });
-  }, []);
 
   // Track which images were removed (by original index) and added (local paths) in edit mode
   const [removedIndices, setRemovedIndices] = useState<Set<number>>(new Set());
@@ -332,21 +321,16 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
                 { value: "faceid" as const, label: "FaceID", desc: "SDXL · face ✦", tip: "True facial identity — best for consistent character faces across scenes" },
                 { value: "lora" as const, label: "LoRA", desc: "Import · best ✦", tip: "Import a trained LoRA for the highest quality character identity" },
               ]).map((opt) => {
-                const disabled =
-                  (opt.value === "ip-adapter" && !providers.diffusers) ||
-                  (opt.value === "faceid" && !providers.faceid);
                 return (
                   <button
                     key={opt.value}
-                    onClick={() => !disabled && setAdapterType(opt.value)}
-                    disabled={disabled}
+                    onClick={() => setAdapterType(opt.value)}
                     title={opt.tip}
                     className={cn(
                       "px-2 py-2 rounded-lg border text-left transition-all",
                       adapterType === opt.value
                         ? "border-accent bg-accent-muted/30 ring-1 ring-accent/30"
                         : "border-border-default hover:border-accent/50",
-                      disabled && "opacity-40 cursor-not-allowed",
                     )}
                   >
                     <span className="text-xs font-medium text-text-primary block">{opt.label}</span>
@@ -361,24 +345,14 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
                 Uses FLUX via MLX for fast generation (~60s). Captures general style but not precise facial features.
               </p>
             )}
-            {adapterType === "ip-adapter" && providers.diffusers && (
+            {adapterType === "ip-adapter" && (
               <p className="text-[10px] text-text-secondary/70 mt-1.5">
-                Uses CLIP vision embeddings for style and composition transfer. Good for overall look, not face-specific.
+                Uses CLIP vision embeddings for style and composition transfer. Good for overall look, not face-specific. Requires PyTorch + diffusers.
               </p>
             )}
-            {adapterType === "ip-adapter" && !providers.diffusers && (
-              <p className="text-[10px] text-amber-400 mt-1.5">
-                IP-Adapter requires PyTorch + diffusers. Install deps to enable.
-              </p>
-            )}
-            {adapterType === "faceid" && providers.faceid && (
+            {adapterType === "faceid" && (
               <p className="text-[10px] text-emerald-400/80 mt-1.5">
-                ✦ Recommended for character consistency — uses InsightFace ArcFace embeddings with SDXL for true face likeness. ~8.8 GB of adapter downloads required.
-              </p>
-            )}
-            {adapterType === "faceid" && !providers.faceid && (
-              <p className="text-[10px] text-amber-400 mt-1.5">
-                FaceID requires InsightFace + ONNX Runtime. Install deps to enable.
+                ✦ Recommended for character consistency — uses InsightFace ArcFace embeddings with SDXL for true face likeness. Requires InsightFace + ONNX Runtime + ~8.8 GB adapter downloads.
               </p>
             )}
             {adapterType === "lora" && (
