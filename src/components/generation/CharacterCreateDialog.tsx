@@ -313,31 +313,21 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
                 Identity Method
               </span>
             </label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {([
-                { value: "auto" as const, label: "Auto", desc: "Best available", tip: "Automatically selects the best adapter based on what's installed" },
-                { value: "redux" as const, label: "Redux", desc: "MLX · fast", tip: "Fast generation via MLX — captures general style and appearance" },
-                { value: "ip-adapter" as const, label: "IP-Adapter", desc: "FLUX · style", tip: "CLIP-based style/composition transfer from reference images" },
-                { value: "faceid" as const, label: "FaceID", desc: "SDXL · face ✦", tip: "True facial identity — best for consistent character faces across scenes" },
-                { value: "lora" as const, label: "LoRA", desc: "Import · best ✦", tip: "Import a trained LoRA for the highest quality character identity" },
-              ]).map((opt) => {
-                return (
-                  <button
-                    key={opt.value}
-                    onClick={() => setAdapterType(opt.value)}
-                    title={opt.tip}
-                    className={cn(
-                      "px-2 py-2 rounded-lg border text-left transition-all",
-                      adapterType === opt.value
-                        ? "border-accent bg-accent-muted/30 ring-1 ring-accent/30"
-                        : "border-border-default hover:border-accent/50",
-                    )}
-                  >
-                    <span className="text-xs font-medium text-text-primary block">{opt.label}</span>
-                    <span className="text-[10px] text-text-secondary">{opt.desc}</span>
-                  </button>
-                );
-              })}
+            <div className="relative">
+              <select
+                value={adapterType}
+                onChange={(e) => setAdapterType(e.target.value as typeof adapterType)}
+                className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-border-default bg-bg-primary text-sm text-text-primary focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition-all cursor-pointer"
+              >
+                <option value="auto">Auto — Best available</option>
+                <option value="redux">Redux — MLX · fast</option>
+                <option value="ip-adapter">IP-Adapter — FLUX · style transfer</option>
+                <option value="faceid">FaceID — SDXL · face identity ✦</option>
+                <option value="lora">Trained LoRA — Import · best quality ✦</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-text-secondary">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
             </div>
             {/* Contextual info for selected adapter type */}
             {adapterType === "redux" && (
