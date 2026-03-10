@@ -1380,6 +1380,51 @@ The Community Hub solves the "scientific parameters" problem: generation quality
 
 ---
 
+### Distribution & Packaging
+
+**Goal:** Non-developer users can install and run Imagen Heap from a `.app` bundle without manual Python setup.
+
+#### Current Implementation: Option A — Bundled setup.sh + First-Launch Dialog ✅
+
+The `.app` bundle includes `scripts/setup.sh` and the full Python source in `Contents/Resources/`. On launch, the Rust backend checks for a Python virtual environment at `~/.imagen-heap/venv/`. If found, it uses the venv interpreter; otherwise, it falls back to system `python3`. If the sidecar fails to start and no venv exists, a native macOS dialog appears with instructions to run the setup script:
+
+```
+bash "/path/to/Imagen Heap.app/Contents/Resources/scripts/setup.sh"
+```
+
+**What `setup.sh` does:**
+1. Checks for macOS + Apple Silicon
+2. Installs Homebrew if missing
+3. Installs Python 3.12 via Homebrew if needed
+4. Creates a virtual environment at `~/.imagen-heap/venv/`
+5. Installs all Python dependencies (mflux, diffusers, torch, insightface, etc.)
+6. Verifies installation with import checks
+7. Takes ~5-10 minutes on first run
+
+**Python interpreter resolution (in Rust):**
+1. `~/.imagen-heap/venv/bin/python3` — preferred (venv from setup.sh)
+2. `python3` — fallback (system/Homebrew Python)
+
+**Tauri bundle configuration:**
+```json
+"bundle": {
+  "resources": {
+    "../scripts/setup.sh": "scripts/setup.sh",
+    "../python/src/imagen_heap/": "python/src/imagen_heap/"
+  }
+}
+```
+
+#### Future: Option B — In-App Setup Wizard
+
+Instead of opening Terminal, the first-launch experience runs `setup.sh` as a child process from within the app, with a beautiful progress screen showing real-time status ("Installing Python…", "Setting up environment…", "Almost ready!"). This integrates with the existing FirstRunWizard and keeps the user inside the app the entire time. Implementation deferred to M9 polish.
+
+#### Future: Option C — Fully Embedded Python Runtime
+
+Use `python-build-standalone` or `conda-pack` to bundle a complete Python 3.12 + all dependencies inside the `.app` bundle (~2-4 GB). Zero setup required — true drag-to-Applications experience. Requires significant packaging work, code signing complexity, and a strategy for updating Python deps. Deferred to post-V1.0.
+
+---
+
 ## Directory Structure
 
 ```

@@ -391,3 +391,14 @@
 | Quality preset timing | Quality preset: 25→20 steps, time estimates updated to match real M3 Max performance (~45s schnell, ~5min dev). |
 | Filmstrip placeholder | Animated placeholder thumbnail appears in filmstrip during generation. Click other thumbnails to browse history while generating; click placeholder to return to progress view. |
 | Cancel generation | Real cancel support: Python threading.Event checked at each step, Rust command, TypeScript API, cancel button in progress view + placeholder context menu. |
+
+### Distribution & Packaging
+
+| Item | Status |
+|------|--------|
+| `scripts/setup.sh` — one-time Python environment setup | ✅ Done |
+| Tauri bundle resources — setup.sh + Python source in .app | ✅ Done |
+| Rust venv detection — prefer `~/.imagen-heap/venv/bin/python3` | ✅ Done |
+| First-launch dialog — shows setup instructions when Python missing | ✅ Done |
+| Option B: In-app setup wizard (future) | 📋 Documented in plan.md |
+| Option C: Embedded Python runtime (future) | 📋 Documented in plan.md |

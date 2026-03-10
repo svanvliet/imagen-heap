@@ -39,6 +39,10 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "../scripts/setup.sh": "scripts/setup.sh",
+      "../python/src/imagen_heap/": "python/src/imagen_heap/"
+    }
   }
 }

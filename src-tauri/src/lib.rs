@@ -644,7 +644,21 @@ pub fn run() {
                 .unwrap_or_default();
             info!("Resource dir: {:?}", resource_dir);
 
-            // Find the Python sidecar script
+            // --- Resolve Python interpreter ---
+            // Priority: 1) venv at ~/.imagen-heap/venv  2) system python3
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            let venv_python = std::path::PathBuf::from(&home)
+                .join(".imagen-heap/venv/bin/python3");
+
+            let python_path = if venv_python.exists() {
+                info!("Using venv Python: {:?}", venv_python);
+                venv_python.to_string_lossy().to_string()
+            } else {
+                info!("Venv not found at {:?}, falling back to system python3", venv_python);
+                "python3".to_string()
+            };
+
+            // --- Find the Python sidecar script ---
             let cwd = std::env::current_dir().unwrap_or_default();
             let script_candidates = vec![
                 // Dev mode: CWD is project root
@@ -665,7 +679,7 @@ pub fn run() {
             if let Some(path) = script_path {
                 let path_str = path.to_string_lossy().to_string();
                 info!("Using Python script: {}", path_str);
-                match start_sidecar("python3", &path_str, app.handle(), pending.clone()) {
+                match start_sidecar(&python_path, &path_str, app.handle(), pending.clone()) {
                     Ok((child, writer)) => {
                         let state: State<SidecarState> = app.state();
                         *state.process.lock().unwrap() = Some(child);
@@ -677,6 +691,49 @@ pub fn run() {
                     }
                     Err(e) => {
                         error!("Failed to start Python sidecar: {}", e);
+
+                        // If sidecar failed and no venv exists, show setup dialog
+                        if !venv_python.exists() {
+                            let setup_script = resource_dir.join("scripts/setup.sh");
+                            let setup_path = if setup_script.exists() {
+                                setup_script.to_string_lossy().to_string()
+                            } else {
+                                // Dev mode: try relative to CWD
+                                let dev_script = cwd.join("scripts/setup.sh");
+                                if dev_script.exists() {
+                                    dev_script.to_string_lossy().to_string()
+                                } else {
+                                    String::new()
+                                }
+                            };
+
+                            let msg = if setup_path.is_empty() {
+                                "Imagen Heap requires a Python environment to run.\n\n\
+                                 Please run the setup script included with the app:\n\n\
+                                 bash scripts/setup.sh\n\n\
+                                 Then relaunch Imagen Heap.".to_string()
+                            } else {
+                                format!(
+                                    "Imagen Heap requires a Python environment to run.\n\n\
+                                     Please open Terminal and run:\n\n\
+                                     bash \"{}\"\n\n\
+                                     This is a one-time setup (~5 minutes).\n\
+                                     Then relaunch Imagen Heap.",
+                                    setup_path
+                                )
+                            };
+
+                            warn!("Python environment not configured. Showing setup dialog.");
+                            let handle = app.handle().clone();
+                            tauri::async_runtime::spawn(async move {
+                                use tauri_plugin_dialog::DialogExt;
+                                handle.dialog()
+                                    .message(msg)
+                                    .title("Setup Required")
+                                    .blocking_show();
+                            });
+                        }
+
                         let _ = app.emit("backend:status", "error");
                     }
                 }
