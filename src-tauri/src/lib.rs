@@ -429,11 +429,18 @@ fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle:
 
 // --- Adapter management commands ---
 
-/// Get available runtime providers
+/// Get available runtime providers (short timeout — avoids blocking UI on slow imports)
 #[tauri::command]
 fn get_available_providers(state: State<SidecarState>) -> Result<serde_json::Value, String> {
     info!("Command: get_available_providers");
-    send_rpc(&state, "get_available_providers", serde_json::json!({}))
+    send_rpc_raw(
+        &state.next_id,
+        &state.pending,
+        &state.writer,
+        "get_available_providers",
+        serde_json::json!({}),
+        10,  // 10s timeout — heavy imports may take a while on first call
+    )
 }
 
 /// List all adapters with download status

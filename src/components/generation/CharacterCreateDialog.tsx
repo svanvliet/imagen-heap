@@ -48,9 +48,14 @@ export function CharacterDialog({ onClose, character }: CharacterDialogProps) {
 
   const nameRef = useRef<HTMLInputElement>(null);
 
-  // Check which providers are available
+  // Check which providers are available (non-blocking — defaults if timeout)
   useEffect(() => {
-    api.getAvailableProviders().then(setProviders).catch(() => {});
+    api.getAvailableProviders()
+      .then(setProviders)
+      .catch(() => {
+        // On timeout or error, assume all providers available — user will see errors at generation time
+        setProviders({ mlx: true, diffusers: true, faceid: true });
+      });
   }, []);
 
   // Track which images were removed (by original index) and added (local paths) in edit mode

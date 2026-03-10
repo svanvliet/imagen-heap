@@ -19,10 +19,12 @@ INSIGHTFACE_MODEL = "buffalo_l"
 def is_available() -> bool:
     """Check if InsightFace + ONNX Runtime are installed."""
     try:
-        import insightface  # noqa: F401
-        import onnxruntime  # noqa: F401
-        return True
-    except ImportError:
+        import importlib.util
+        return (
+            importlib.util.find_spec("insightface") is not None
+            and importlib.util.find_spec("onnxruntime") is not None
+        )
+    except Exception:
         return False
 
 

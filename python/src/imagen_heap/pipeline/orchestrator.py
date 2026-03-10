@@ -102,7 +102,10 @@ class PipelineOrchestrator:
         return self._diffusers_provider
 
     def get_available_providers(self) -> dict:
-        """Return which providers are available."""
+        """Return which providers are available (cached after first call)."""
+        if hasattr(self, '_cached_providers'):
+            return self._cached_providers
+
         providers = {"mlx": True}  # MLX is always primary
         try:
             from imagen_heap.providers.diffusers_provider import is_available
@@ -114,6 +117,8 @@ class PipelineOrchestrator:
             providers["faceid"] = providers.get("diffusers", False) and face_available()
         except ImportError:
             providers["faceid"] = False
+
+        self._cached_providers = providers
         return providers
 
     def _resolve_provider_for_character(self, config: GenerationConfig) -> str:

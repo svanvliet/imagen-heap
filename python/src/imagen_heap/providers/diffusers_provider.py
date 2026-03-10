@@ -25,10 +25,12 @@ logger = logging.getLogger(__name__)
 def is_available() -> bool:
     """Check if the diffusers provider can be used (torch + diffusers installed, MPS available)."""
     try:
+        import importlib.util
+        if importlib.util.find_spec("torch") is None or importlib.util.find_spec("diffusers") is None:
+            return False
         import torch
-        from diffusers import FluxPipeline
         return torch.backends.mps.is_available()
-    except ImportError:
+    except (ImportError, Exception):
         return False
 
 
