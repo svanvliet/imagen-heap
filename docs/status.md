@@ -373,7 +373,7 @@
 | Task | Status |
 |------|--------|
 | M5d-1: CLI training scripts | ✅ Done (scripts work, training runs on external PC) |
-| M5d-2: Character metadata — LoRA fields | 🔲 Next |
-| M5d-3: Frontend — LoRA identity method UI | 🔲 |
-| M5d-4: Python — LoRA inference (MLX + diffusers) | 🔲 |
-| M5d-5: Orchestrator — LoRA routing | 🔲 |
+| M5d-2: Character metadata — LoRA fields | ✅ Done |
+| M5d-3: Frontend — LoRA identity method UI | ✅ Done |
+| M5d-4: Python — LoRA inference (MLX + diffusers) | ✅ Done |
+| M5d-5: Orchestrator — LoRA routing | ✅ Done |
