@@ -26,7 +26,7 @@ MODEL_MAP = {
 }
 
 # Models that support Redux (character mode) — must be dev variants
-REDUX_COMPATIBLE_MODELS = {"flux-dev-q8", "flux-dev-q4"}
+REDUX_COMPATIBLE_MODELS = {"flux-dev-mflux-q8", "flux-dev-q8", "flux-dev-q4"}
 
 
 class MLXProvider(RuntimeProvider):

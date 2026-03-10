@@ -82,8 +82,14 @@ export const useModelStore = create<ModelState>()(
     }
 
     // If quality hint given, try to match schnell for fast, dev for quality
+    // Prefer pre-quantized mflux variants (faster native inference)
     if (qualityHint) {
       const pattern = qualityHint === "fast" ? "schnell" : "dev";
+      const mfluxMatch = downloaded.find((m) => m.id.includes(pattern) && m.id.includes("mflux"));
+      if (mfluxMatch) {
+        set({ selectedModelId: mfluxMatch.id });
+        return;
+      }
       const match = downloaded.find((m) => m.id.includes(pattern));
       if (match) {
         set({ selectedModelId: match.id });
