@@ -8,15 +8,15 @@ export const QUALITY_PROFILES = {
   fast: {
     id: "fast",
     label: "Fast",
-    description: "~10s • 4 steps",
+    description: "~45s • 4 steps",
     steps: 4,
     model: "flux-schnell",
   },
   quality: {
     id: "quality",
     label: "Quality",
-    description: "~60s • 25 steps",
-    steps: 25,
+    description: "~5 min • 20 steps",
+    steps: 20,
     model: "flux-dev",
   },
 } as const;
