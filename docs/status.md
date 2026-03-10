@@ -388,3 +388,6 @@
 | Memory thrashing | Standard and LoRA generation now unload competing model instances before loading. Two full FLUX models (~16GB each) in memory simultaneously caused swap thrashing and ~20s/step performance. |
 | Pre-quantized FLUX.1-dev | Added `flux-dev-mflux-q8` (dhairyashil/FLUX.1-dev-mflux-8bit, ~18GB) as a pre-quantized model. The existing `flux-dev-q8` downloads full bf16 weights (~33GB) and quantizes on-the-fly, resulting in ~20s/step. Pre-quantized model restores expected ~2-4s/step. Quality button auto-selects mflux variants when available. |
 | Provider checks lightweight | `is_available()` checks for diffusers and face_embedding now use `importlib.util.find_spec()` instead of importing heavy modules. Results cached after first call. |
+| Quality preset timing | Quality preset: 25→20 steps, time estimates updated to match real M3 Max performance (~45s schnell, ~5min dev). |
+| Filmstrip placeholder | Animated placeholder thumbnail appears in filmstrip during generation. Click other thumbnails to browse history while generating; click placeholder to return to progress view. |
+| Cancel generation | Real cancel support: Python threading.Event checked at each step, Rust command, TypeScript API, cancel button in progress view + placeholder context menu. |
