@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Current Phase: M5b → M5c — SDXL + FaceID for True Face Identity | M6 (Pose & Composition Control) next
+## Current Phase: M5d — LoRA Character Identity (Import & Inference) | M6 (Pose & Composition Control) next
 
 **Branch:** `feature/character-system`
 
@@ -363,3 +363,17 @@
 - Python: 55 tests passing (14 new FaceID tests)
 - Frontend: 16 tests passing (vitest)
 - Rust: cargo check passes
+
+### M5d Progress (LoRA Character Identity — Import & Inference)
+
+**Pivot:** On-device LoRA training on Apple Silicon MPS proved impractical (Float8 quantization unsupported, qint8 falls back to CPU at ~183s/step). Training relocated to external PC with NVIDIA GPU (5070 Ti). Focus shifted to **LoRA import + inference integration** in the app.
+
+**Key discovery:** mflux 0.16.8+ natively supports `--lora-paths` and `--lora-scales`, enabling fast MLX LoRA inference (~60s) without the slower diffusers/PyTorch path.
+
+| Task | Status |
+|------|--------|
+| M5d-1: CLI training scripts | ✅ Done (scripts work, training runs on external PC) |
+| M5d-2: Character metadata — LoRA fields | 🔲 Next |
+| M5d-3: Frontend — LoRA identity method UI | 🔲 |
+| M5d-4: Python — LoRA inference (MLX + diffusers) | 🔲 |
+| M5d-5: Orchestrator — LoRA routing | 🔲 |

@@ -906,66 +906,96 @@ Help users understand the three adapter types with clear, visual comparison.
 
 ---
 
-### Milestone 5d: Character LoRA Training — True Identity Preservation
+### Milestone 5d: LoRA Character Identity — Import & Inference
 
-**Goal:** Users can train a personalized LoRA from their character's reference photos, producing dramatically better facial likeness than any zero-shot adapter (FaceID, IP-Adapter, Redux). Trained LoRAs integrate into the existing character system as a fourth identity method.
+**Goal:** Users import a pre-trained FLUX LoRA (.safetensors) into a character card and generate images with dramatically better facial likeness than any zero-shot adapter. The LoRA integrates into the existing character system as a fifth identity method alongside Auto/Redux/IP-Adapter/FaceID.
 
-**Why:** IP-Adapter FaceID PlusV2 encodes faces into a 512-dim vector — too compressed for true likeness. LoRA fine-tunes the model itself to learn the person's exact face from thousands of gradient updates, capturing micro-details (eye spacing, nose shape, skin texture, wrinkle patterns) that adapters cannot.
+**Why:** IP-Adapter FaceID PlusV2 encodes faces into a 512-dim vector — too compressed for true likeness. LoRA fine-tunes the model itself to learn a specific person's face during training, capturing micro-details that adapters cannot. Training happens externally (PC with GPU, cloud services like Replicate/RunPod, or CLI scripts we provide), then the trained .safetensors file is imported into the app.
 
-**Approach:** Hybrid strategy — keep all existing adapters (Redux/IP-Adapter/FaceID) as zero-training options, add LoRA as the "pro" quality tier.
+**Key Discovery:** mflux 0.16.8+ natively supports `--lora-paths` and `--lora-scales`, meaning LoRA inference can use the **fast MLX path** (~60s) instead of requiring the slower diffusers/PyTorch path. This is a major UX win — LoRA characters get the same speed as standard generation.
 
-#### Phase 1: Manual LoRA Import + CLI Training (M5d-1 through M5d-4)
+**Approach:** Hybrid strategy — keep all existing adapters (Redux/IP-Adapter/FaceID) as zero-training options, add LoRA as the "pro" quality tier with external training.
 
-The user trains a LoRA externally using the provided CLI scripts, then imports the resulting .safetensors file into a character card.
+#### Phase 1: LoRA Import + Inference (M5d-1 through M5d-5) — CURRENT
 
-**M5d-1 — CLI training scripts (validation)**
+**M5d-1 — CLI training scripts ✅ DONE**
 - `scripts/setup-training.sh` — One-time setup of ai-toolkit training environment
 - `scripts/prepare-dataset.sh` — Dataset prep (copy/rename/caption reference photos)
 - `scripts/train-lora.sh` — Launch FLUX LoRA training with sensible defaults
 - `scripts/generate-from-lora.sh` — Test generation with the trained LoRA
-- User validates quality before any app integration code is written
+- Note: Mac MPS training proved impractical (Float8/quantization incompatible, ~183s/step with CPU fallback). Training relocated to external PC with NVIDIA GPU.
 
-**M5d-2 — Python: LoRA inference integration**
-- DiffusersProvider: `text_to_image_with_lora(prompt, lora_path, lora_scale, ...)`
-- Load LoRA via `pipe.load_lora_weights(path)` for FLUX pipeline
-- Support LoRA scale 0.0–1.5 (mapped to character strength slider)
-- Unload LoRA when switching characters or adapters (memory management)
-- MLX/mflux: Check if mflux supports LoRA loading (would enable fast MLX inference with trained LoRAs)
+**M5d-2 — Character metadata: LoRA fields**
+- Add to Character type and metadata.json:
+  - `lora_path`: path to .safetensors file stored in character dir
+  - `lora_filename`: original filename for display
+  - `lora_file_size`: file size in bytes for display
+  - `trigger_word`: prompt keyword that activates identity (default "ohwx")
+- CharacterManager: copy imported .safetensors into `~/.imagen-heap/characters/<id>/lora/`
+- CharacterManager: new methods `set_lora(character_id, lora_file_path, trigger_word)` and `remove_lora(character_id)`
+- Update `update_character` to accept `trigger_word` updates
+- RPC handlers: `set_character_lora`, `remove_character_lora`
+- Rust commands + TypeScript wrappers for the new RPCs
 
 **M5d-3 — Frontend: LoRA as identity method**
-- CharacterCreateDialog: Add "Trained LoRA" as 5th identity method card
-- File picker to import .safetensors LoRA file
-- LoRA file stored in `~/.imagen-heap/characters/<id>/lora/` alongside character data
-- Character card shows "Trained LoRA" badge with file name and size
-- Trigger word field (defaults to "ohwx", user-configurable)
-- Trigger word auto-prepended to prompts when LoRA character is active
+- CharacterCreateDialog: Add "Trained LoRA" as 5th identity method card in the adapter type grid
+  - Icon: sparkle/wand or similar to convey "custom trained"
+  - Description: "Import LoRA · best quality"
+  - When selected, show:
+    - File picker button for .safetensors file (Tauri file dialog, filter: .safetensors)
+    - Display imported filename + file size
+    - Trigger word text input (default "ohwx", editable)
+    - Optional: thumbnail/reference image picker (for character avatar since LoRA characters may not have reference images)
+  - LoRA file is imported (copied) on character save, not on file selection
+- CharacterAvatarRow: show "LoRA" badge on character avatars that use LoRA adapter type
+- CharacterStrengthControl: 
+  - LoRA type needs no adapter downloads (no inline download prompt)
+  - Show "LoRA · trigger: ohwx" info badge
+  - Strength maps to LoRA scale (0.0–1.2)
+- Edit mode: allow changing LoRA file and trigger word
 
-**M5d-4 — Orchestrator: LoRA routing**
-- New adapter_type "lora" in GenerationConfig
-- Orchestrator routes to DiffusersProvider with LoRA path
+**M5d-4 — Python: LoRA inference via MLX (mflux)**
+- MLXProvider: `text_to_image_with_lora(prompt, lora_path, lora_scale, ...)`
+  - Use mflux's native `--lora-paths` / `--lora-scales` support
+  - Trigger word is auto-prepended to prompt if not already present
+  - LoRA scale mapped from character_strength: 0.0–1.0 → 0.0–1.2
+- DiffusersProvider: `text_to_image_with_lora(prompt, lora_path, lora_scale, ...)`
+  - Load via `pipe.load_lora_weights(path)`, `pipe.fuse_lora(lora_scale=scale)`
+  - Unload/unfuse when switching characters or adapter types
+  - Fallback path if MLX has issues with a specific LoRA
+- Memory management: unload previous LoRA before loading new one
+
+**M5d-5 — Orchestrator: LoRA routing**
+- New `adapter_type: "lora"` in GenerationConfig
+- Orchestrator resolves LoRA characters:
+  - Reads `lora_path` and `trigger_word` from character metadata
+  - Prefers MLX provider (fast) — routes to `MLXProvider.text_to_image_with_lora()`
+  - Falls back to DiffusersProvider if MLX LoRA loading fails
+  - Auto-prepends trigger word to prompt
+- `resolved_adapter` metadata: "lora-mlx" or "lora-diffusers"
 - LoRA strength mapped from character_strength slider (0.0–1.0 → 0.0–1.2 scale)
 - Metadata records: adapter_type=lora, lora_path, lora_scale, trigger_word
 
-#### Phase 2: In-App Training Wizard (M5d-5 through M5d-7) — Future
+#### Phase 2: In-App Training Wizard (M5d-6 through M5d-8) — Future
 
-**M5d-5 — Training wizard UI**
+**M5d-6 — Training wizard UI**
 - Step 1: Select/upload 15-50 reference photos with quality validation
 - Step 2: Auto-caption generation (using BLIP or manual review)
 - Step 3: Configure training (steps, trigger word, quality tier)
 - Step 4: Progress view with sample image previews during training
 
-**M5d-6 — Python: Training pipeline**
+**M5d-7 — Python: Training pipeline**
 - Wrap ai-toolkit training as a Python module callable from sidecar
 - Progress streaming via JSON-RPC notifications (step, loss, sample images)
 - Training runs in background thread, interruptible
 - Auto-save checkpoints, resume support
 
-**M5d-7 — Cloud training option**
+**M5d-8 — Cloud training option**
 - Optional: Replicate/RunPod API integration for faster training (~20min vs 2-4hrs)
 - User provides API key, training runs in cloud, LoRA downloaded on completion
 - Cost estimate shown before starting (~$3-5 per training run)
 
-**Deliverable (Phase 1):** Users train a face LoRA via CLI scripts, import the .safetensors file into a character card, and generate images with dramatically better facial likeness. The trained LoRA integrates seamlessly with the existing generation pipeline and character system.
+**Deliverable (Phase 1):** Users train a face LoRA externally (PC with GPU, cloud, or CLI scripts), import the .safetensors file into a character card via the app UI, and generate images with dramatically better facial likeness using the fast MLX path. The trained LoRA integrates seamlessly with the existing generation pipeline and character system.
 
 **Deliverable (Phase 2):** One-click training wizard in the app with progress tracking, sample previews, and optional cloud acceleration.
 
