@@ -62,3 +62,36 @@ class TestPipelineOrchestrator:
         assert "<svg" in content
         assert "beautiful landscape" in content
         assert "seed:42" in content
+
+    def test_get_available_providers_default(self):
+        """MLX should always be reported; diffusers depends on environment."""
+        providers = self.orchestrator.get_available_providers()
+        assert "mlx" in providers
+        assert providers["mlx"] is True
+        assert "diffusers" in providers  # key exists, value may vary
+
+    def test_resolve_provider_redux(self):
+        config = GenerationConfig(prompt="test", adapter_type="redux")
+        assert self.orchestrator._resolve_provider_for_character(config) == "mlx"
+
+    def test_resolve_provider_auto_without_diffusers(self):
+        config = GenerationConfig(prompt="test", adapter_type="auto")
+        result = self.orchestrator._resolve_provider_for_character(config)
+        # Auto resolves to mlx if no IP-Adapter weights, or diffusers if available
+        assert result in ("mlx", "diffusers")
+
+    def test_resolve_provider_ip_adapter_fallback(self):
+        config = GenerationConfig(prompt="test", adapter_type="ip-adapter")
+        result = self.orchestrator._resolve_provider_for_character(config)
+        # If diffusers is available, uses it; otherwise falls back to mlx
+        assert result in ("mlx", "diffusers")
+
+    def test_generation_config_adapter_type_default(self):
+        config = GenerationConfig(prompt="test")
+        assert config.adapter_type == "auto"
+
+    def test_generation_config_adapter_type_in_dict(self):
+        config = GenerationConfig(prompt="test", adapter_type="ip-adapter")
+        result = self.orchestrator.generate(config)
+        d = result.to_dict()
+        assert d["config"]["adapter_type"] == "ip-adapter"

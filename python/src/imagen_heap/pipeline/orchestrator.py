@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,6 +12,11 @@ from typing import Any
 from imagen_heap.providers import RuntimeProvider, StubProvider
 
 logger = logging.getLogger(__name__)
+
+
+class GenerationCancelled(Exception):
+    """Raised when a generation is cancelled by the user."""
+    pass
 
 
 @dataclass
@@ -27,6 +33,12 @@ class GenerationConfig:
     model_id: str = "flux-schnell"
     sampler: str = "euler"
     scheduler: str = "normal"
+    character_id: str | None = None
+    character_strength: float = 0.6
+    adapter_type: str = "auto"  # "auto", "redux", "ip-adapter", "faceid", "lora"
+    # LoRA-specific fields (resolved from character metadata)
+    lora_path: str | None = None
+    trigger_word: str | None = None
 
 
 @dataclass
@@ -38,6 +50,8 @@ class GenerationResult:
     config: GenerationConfig
     generation_time_ms: int
     created_at: str
+    inference_provider: str = "mlx"   # "mlx", "diffusers", "stub"
+    resolved_adapter: str = "none"    # "none", "redux", "ip-adapter", "sdxl-faceid-plusv2", "lora-mlx", "lora-diffusers"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -56,9 +70,14 @@ class GenerationResult:
                 "model_id": self.config.model_id,
                 "sampler": self.config.sampler,
                 "scheduler": self.config.scheduler,
+                "character_id": self.config.character_id,
+                "character_strength": self.config.character_strength,
+                "adapter_type": self.config.adapter_type,
             },
             "generation_time_ms": self.generation_time_ms,
             "created_at": self.created_at,
+            "inference_provider": self.inference_provider,
+            "resolved_adapter": self.resolved_adapter,
         }
 
 
@@ -69,36 +88,328 @@ class PipelineOrchestrator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.provider = provider or StubProvider()
+        self._diffusers_provider = None  # Lazy-loaded secondary provider
         self._current_job_id: str | None = None
+        self._cancel_event = threading.Event()
+        self._generation_lock = threading.Lock()
         logger.info("PipelineOrchestrator initialized, output_dir=%s", self.output_dir)
+
+    def cancel(self) -> None:
+        """Request cancellation of the current generation."""
+        self._cancel_event.set()
+        logger.info("Cancellation requested for job=%s", self._current_job_id)
+
+    def is_cancelled(self) -> bool:
+        """Check if cancellation has been requested."""
+        return self._cancel_event.is_set()
+
+    def _auto_load_model(self, config: GenerationConfig) -> None:
+        """Auto-load the model if needed. Must be called inside _generation_lock."""
+        if not hasattr(self.provider, 'load_model') or not hasattr(self.provider, '_loaded_model'):
+            return
+
+        needed = config.model_id
+        is_sdxl_model = False
+        try:
+            from imagen_heap.models import get_model_by_id as _get_model
+            _entry = _get_model(needed)
+            is_sdxl_model = _entry is not None and _entry.architecture == "sdxl"
+        except Exception:
+            is_sdxl_model = False
+
+        if not is_sdxl_model and self.provider._loaded_model != needed:
+            logger.info("Auto-loading model %s for generation", needed)
+            self.provider.load_model(needed)
+
+    @property
+    def diffusers_provider(self):
+        """Lazy-load the DiffusersProvider only when needed."""
+        if self._diffusers_provider is None:
+            try:
+                from imagen_heap.providers.diffusers_provider import DiffusersProvider, is_available
+                if is_available():
+                    self._diffusers_provider = DiffusersProvider()
+                    logger.info("DiffusersProvider loaded as secondary provider")
+                else:
+                    logger.info("DiffusersProvider not available (torch/MPS not found)")
+            except ImportError:
+                logger.info("DiffusersProvider not available (diffusers not installed)")
+        return self._diffusers_provider
+
+    def get_available_providers(self) -> dict:
+        """Return which providers are available (cached after first call)."""
+        if hasattr(self, '_cached_providers'):
+            return self._cached_providers
+
+        providers = {"mlx": True}  # MLX is always primary
+        try:
+            from imagen_heap.providers.diffusers_provider import is_available
+            providers["diffusers"] = is_available()
+        except ImportError:
+            providers["diffusers"] = False
+        try:
+            from imagen_heap.providers.face_embedding import is_available as face_available
+            providers["faceid"] = providers.get("diffusers", False) and face_available()
+        except ImportError:
+            providers["faceid"] = False
+
+        self._cached_providers = providers
+        return providers
+
+    def _resolve_provider_for_character(self, config: GenerationConfig) -> str:
+        """Determine which provider to use for a character generation.
+
+        Returns 'mlx' for Redux/LoRA or 'diffusers' for IP-Adapter/FaceID.
+        """
+        adapter_type = config.adapter_type
+
+        if adapter_type == "lora":
+            # LoRA prefers MLX (mflux has native LoRA support and is faster)
+            return "mlx"
+
+        if adapter_type == "faceid":
+            if self.diffusers_provider is not None and hasattr(self.diffusers_provider, 'is_faceid_available') and self.diffusers_provider.is_faceid_available():
+                return "diffusers"
+            logger.warning("FaceID requested but InsightFace/DiffusersProvider unavailable, falling back to Redux")
+            return "mlx"
+
+        if adapter_type == "ip-adapter":
+            if self.diffusers_provider is not None:
+                return "diffusers"
+            logger.warning("IP-Adapter requested but DiffusersProvider unavailable, falling back to Redux")
+            return "mlx"
+
+        if adapter_type == "redux":
+            return "mlx"
+
+        # Auto mode: prefer IP-Adapter if available and adapter is downloaded
+        if adapter_type == "auto":
+            if self.diffusers_provider is not None:
+                # Check if IP-Adapter weights are available (downloaded)
+                try:
+                    from imagen_heap.adapters import get_adapter_by_id
+                    ip_adapter = get_adapter_by_id("flux-ip-adapter-v2")
+                    if ip_adapter:
+                        return "diffusers"
+                except Exception:
+                    pass
+            return "mlx"
+
+        return "mlx"
 
     def generate(
         self,
         config: GenerationConfig,
         progress_callback=None,
+        reference_image_paths: list[str] | None = None,
     ) -> GenerationResult:
-        """Run a full generation job."""
+        """Run a full generation job.
+
+        If reference_image_paths is provided and character_id is set,
+        uses Redux mode for character-consistent generation.
+
+        Waits for any in-progress generation to finish before starting.
+        The Metal GPU cannot handle concurrent inference jobs.
+        """
+        logger.debug("Waiting for generation lock...")
+        if not self._generation_lock.acquire(timeout=60):
+            raise RuntimeError("Timed out waiting for previous generation to finish.")
+
+        try:
+            return self._generate_locked(config, progress_callback, reference_image_paths)
+        finally:
+            self._generation_lock.release()
+
+    def _generate_locked(
+        self,
+        config: GenerationConfig,
+        progress_callback=None,
+        reference_image_paths: list[str] | None = None,
+    ) -> GenerationResult:
+        """Internal generate — must be called with _generation_lock held."""
+        # Auto-load model if needed (inside lock so it's serialized)
+        self._auto_load_model(config)
+
+        # Check if cancel was requested during model loading or before we started
+        if self._cancel_event.is_set():
+            self._cancel_event.clear()
+            logger.info("Generation cancelled during setup")
+            raise GenerationCancelled("Generation cancelled during setup")
+
         job_id = str(uuid.uuid4())[:8]
         self._current_job_id = job_id
+        self._cancel_event.clear()
         logger.info("Starting generation job=%s prompt='%s' steps=%d", job_id, config.prompt[:50], config.steps)
 
         start_time = time.time()
 
         def wrapped_progress(step: int, total: int, preview: str | None) -> None:
+            if self._cancel_event.is_set():
+                raise GenerationCancelled("Generation cancelled by user")
             if progress_callback:
                 progress_callback(job_id, step, total, preview)
 
         try:
-            result = self.provider.text_to_image(
-                prompt=config.prompt,
-                negative_prompt=config.negative_prompt,
-                seed=config.seed,
-                steps=config.steps,
-                cfg=config.cfg,
-                width=config.width,
-                height=config.height,
-                progress_callback=wrapped_progress,
+            use_character = (
+                config.character_id
+                and (reference_image_paths or config.adapter_type == "lora")
             )
+
+            inference_provider = "mlx"
+            resolved_adapter = "none"
+
+            if use_character:
+                provider_choice = self._resolve_provider_for_character(config)
+
+                if config.adapter_type == "lora" and config.lora_path:
+                    # LoRA character — prefer MLX, fallback to diffusers
+                    lora_scale = min(1.2, config.character_strength * 1.2)
+                    logger.info("Using LoRA: %s (scale=%.2f, provider=%s)", config.lora_path, lora_scale, provider_choice)
+
+                    if provider_choice == "mlx" and hasattr(self.provider, 'text_to_image_with_lora'):
+                        # Free diffusers memory if loaded
+                        if self._diffusers_provider is not None and self._diffusers_provider._pipe is not None:
+                            logger.info("Unloading diffusers pipeline to free memory for MLX LoRA")
+                            self._diffusers_provider.unload_model()
+                        inference_provider = "mlx"
+                        resolved_adapter = "lora-mlx"
+                        result = self.provider.text_to_image_with_lora(
+                            prompt=config.prompt,
+                            seed=config.seed,
+                            steps=config.steps,
+                            cfg=config.cfg,
+                            width=config.width,
+                            height=config.height,
+                            lora_path=config.lora_path,
+                            lora_scale=lora_scale,
+                            model_id=config.model_id,
+                            progress_callback=wrapped_progress,
+                        )
+                    elif self.diffusers_provider is not None and hasattr(self.diffusers_provider, 'text_to_image_with_lora'):
+                        inference_provider = "diffusers"
+                        resolved_adapter = "lora-diffusers"
+                        result = self.diffusers_provider.text_to_image_with_lora(
+                            prompt=config.prompt,
+                            seed=config.seed,
+                            steps=config.steps,
+                            cfg=config.cfg,
+                            width=config.width,
+                            height=config.height,
+                            lora_path=config.lora_path,
+                            lora_scale=lora_scale,
+                            model_id=config.model_id,
+                            progress_callback=wrapped_progress,
+                        )
+                    else:
+                        raise RuntimeError("No provider available for LoRA generation. MLX or diffusers required.")
+
+                elif provider_choice == "diffusers" and config.adapter_type == "faceid" and self.diffusers_provider is not None:
+                    # FaceID via SDXL + InsightFace
+                    inference_provider = "diffusers"
+                    resolved_adapter = "sdxl-faceid-plusv2"
+                    logger.info("Using FaceID (SDXL/diffusers) with %d reference images", len(reference_image_paths))
+                    result = self.diffusers_provider.text_to_image_with_faceid(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        reference_image_paths=reference_image_paths,
+                        identity_strength=config.character_strength,
+                        model_id=config.model_id,
+                        progress_callback=wrapped_progress,
+                    )
+                elif provider_choice == "diffusers" and self.diffusers_provider is not None:
+                    # IP-Adapter via FLUX/diffusers
+                    inference_provider = "diffusers"
+                    resolved_adapter = "ip-adapter"
+                    logger.info("Using IP-Adapter (diffusers) with %d reference images", len(reference_image_paths))
+                    self.diffusers_provider.load_model(config.model_id)
+                    result = self.diffusers_provider.text_to_image_with_identity(
+                        prompt=config.prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        reference_image_paths=reference_image_paths,
+                        identity_strength=config.character_strength,
+                        progress_callback=wrapped_progress,
+                    )
+                elif hasattr(self.provider, 'text_to_image_with_character'):
+                    # Redux via MLX — free diffusers memory if loaded
+                    if self._diffusers_provider is not None and self._diffusers_provider._pipe is not None:
+                        logger.info("Unloading diffusers pipeline to free memory for MLX")
+                        self._diffusers_provider.unload_model()
+                    inference_provider = "mlx"
+                    resolved_adapter = "redux"
+                    logger.info("Using Redux character mode (MLX) with %d reference images", len(reference_image_paths))
+                    result = self.provider.text_to_image_with_character(
+                        prompt=config.prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        reference_image_paths=reference_image_paths,
+                        character_strength=config.character_strength,
+                        model_id=config.model_id,
+                        progress_callback=wrapped_progress,
+                    )
+                else:
+                    logger.warning("No character provider available, falling back to standard generation")
+                    result = self.provider.text_to_image(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        progress_callback=wrapped_progress,
+                    )
+            else:
+                # Standard text-to-image (no character)
+                # Check if the selected model is SDXL architecture
+                is_sdxl = False
+                try:
+                    from imagen_heap.models import get_model_by_id
+                    model_entry = get_model_by_id(config.model_id)
+                    is_sdxl = model_entry is not None and model_entry.architecture == "sdxl"
+                except Exception:
+                    is_sdxl = "sdxl" in config.model_id or "realvis" in config.model_id or "juggernaut" in config.model_id
+
+                if is_sdxl and self.diffusers_provider is not None:
+                    # SDXL-architecture models use DiffusersProvider
+                    inference_provider = "diffusers"
+                    self.diffusers_provider._load_sdxl_pipeline(config.model_id)
+                    result = self.diffusers_provider.text_to_image(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        progress_callback=wrapped_progress,
+                    )
+                else:
+                    # Standard MLX text-to-image — free diffusers memory if loaded
+                    if self._diffusers_provider is not None and self._diffusers_provider._pipe is not None:
+                        logger.info("Unloading diffusers pipeline to free memory for MLX")
+                        self._diffusers_provider.unload_model()
+                    result = self.provider.text_to_image(
+                        prompt=config.prompt,
+                        negative_prompt=config.negative_prompt,
+                        seed=config.seed,
+                        steps=config.steps,
+                        cfg=config.cfg,
+                        width=config.width,
+                        height=config.height,
+                        progress_callback=wrapped_progress,
+                    )
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 
@@ -112,6 +423,8 @@ class PipelineOrchestrator:
                 config=config,
                 generation_time_ms=elapsed_ms,
                 created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                inference_provider=inference_provider,
+                resolved_adapter=resolved_adapter,
             )
 
             logger.info("Generation complete job=%s time=%dms path=%s", job_id, elapsed_ms, image_path)
@@ -137,6 +450,29 @@ class PipelineOrchestrator:
             except Exception:
                 logger.debug("Thumbnail generation failed, using full image", exc_info=True)
                 thumbnail_path = image_path
+
+            return str(image_path), str(thumbnail_path)
+
+        # Diffusers returns a PIL Image
+        try:
+            from PIL import Image as PILImage
+            if isinstance(result, PILImage.Image):
+                image_path = self.output_dir / f"{job_id}.png"
+                result.save(str(image_path))
+                logger.debug("Saved diffusers PIL image to %s", image_path)
+
+                thumbnail_path = self.output_dir / f"{job_id}_thumb.png"
+                try:
+                    thumb = result.copy()
+                    thumb.thumbnail((256, 256))
+                    thumb.save(str(thumbnail_path))
+                except Exception:
+                    logger.debug("Thumbnail generation failed, using full image", exc_info=True)
+                    thumbnail_path = image_path
+
+                return str(image_path), str(thumbnail_path)
+        except ImportError:
+            pass
 
             return str(image_path), str(thumbnail_path)
 

@@ -2,18 +2,37 @@ import { useGenerationStore } from "@/stores/generation";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { Sparkles } from "lucide-react";
+import { cancelGeneration as cancelGenerationRpc } from "@/lib/tauri";
 import type { GenerationResult } from "@/types";
 
 export function Filmstrip() {
   const history = useGenerationStore((s) => s.history);
   const currentImage = useGenerationStore((s) => s.currentImage);
+  const isGenerating = useGenerationStore((s) => s.isGenerating);
+  const viewingProgress = useGenerationStore((s) => s.viewingProgress);
   const selectHistoryItem = useGenerationStore((s) => s.selectHistoryItem);
   const deleteHistoryItem = useGenerationStore((s) => s.deleteHistoryItem);
+  const setViewingProgress = useGenerationStore((s) => s.setViewingProgress);
+  const cancelGenerationStore = useGenerationStore((s) => s.cancelGeneration);
+  const setGenerating = useGenerationStore((s) => s.setGenerating);
+  const setProgress = useGenerationStore((s) => s.setProgress);
+
+  const handleCancel = useCallback(async () => {
+    cancelGenerationStore();
+    try {
+      await cancelGenerationRpc();
+    } catch (err) {
+      console.error("[Filmstrip] Cancel RPC failed:", err);
+    }
+    setGenerating(false);
+    setProgress(null);
+  }, [cancelGenerationStore, setGenerating, setProgress]);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    item: GenerationResult;
+    item: GenerationResult | null;
   } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -70,11 +89,31 @@ export function Filmstrip() {
     }
   }, []);
 
-  if (history.length === 0) return null;
+  if (history.length === 0 && !isGenerating) return null;
 
   return (
     <div className="h-20 border-t border-border-default bg-bg-secondary flex-shrink-0 px-3 py-2">
       <div className="flex gap-2 overflow-x-auto h-full items-center scrollbar-thin">
+        {/* Generating placeholder */}
+        {isGenerating && (
+          <button
+            onClick={() => setViewingProgress(true)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, item: null });
+            }}
+            className={cn(
+              "h-14 w-14 rounded-md overflow-hidden flex-shrink-0 border-2 transition-all",
+              viewingProgress
+                ? "border-accent opacity-100"
+                : "border-transparent opacity-70 hover:opacity-100"
+            )}
+          >
+            <div className="w-full h-full bg-gradient-to-br from-accent/30 to-indigo-500/30 animate-pulse flex items-center justify-center">
+              <Sparkles size={16} className="text-accent" />
+            </div>
+          </button>
+        )}
         {history.map((item, index) => (
           <button
             key={item.id}
@@ -85,7 +124,7 @@ export function Filmstrip() {
             }}
             className={cn(
               "h-14 w-14 rounded-md overflow-hidden flex-shrink-0 border-2 transition-all hover:opacity-100",
-              currentImage?.id === item.id
+              currentImage?.id === item.id && !viewingProgress
                 ? "border-accent opacity-100"
                 : "border-transparent opacity-70"
             )}
@@ -107,38 +146,49 @@ export function Filmstrip() {
           className="fixed z-[100] bg-bg-secondary border border-border-default rounded-lg shadow-xl py-1 min-w-[160px] animate-fade-in"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            onClick={() => { handleSaveAs(contextMenu.item); setContextMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-          >
-            Save As…
-          </button>
-          <button
-            onClick={() => { handleCopyToClipboard(contextMenu.item); setContextMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-          >
-            Copy to Clipboard
-          </button>
-          <div className="h-px bg-border-default my-1" />
-          <button
-            onClick={() => { navigator.clipboard.writeText(contextMenu.item.config.prompt); setContextMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-          >
-            Copy Prompt
-          </button>
-          <button
-            onClick={() => { navigator.clipboard.writeText(String(contextMenu.item.config.seed)); setContextMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-          >
-            Copy Seed
-          </button>
-          <div className="h-px bg-border-default my-1" />
-          <button
-            onClick={() => { deleteHistoryItem(contextMenu.item.id); setContextMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
-          >
-            Delete
-          </button>
+          {contextMenu.item ? (
+            <>
+              <button
+                onClick={() => { handleSaveAs(contextMenu.item!); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              >
+                Save As…
+              </button>
+              <button
+                onClick={() => { handleCopyToClipboard(contextMenu.item!); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              >
+                Copy to Clipboard
+              </button>
+              <div className="h-px bg-border-default my-1" />
+              <button
+                onClick={() => { navigator.clipboard.writeText(contextMenu.item!.config.prompt); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              >
+                Copy Prompt
+              </button>
+              <button
+                onClick={() => { navigator.clipboard.writeText(String(contextMenu.item!.config.seed)); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              >
+                Copy Seed
+              </button>
+              <div className="h-px bg-border-default my-1" />
+              <button
+                onClick={() => { deleteHistoryItem(contextMenu.item!.id); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+              >
+                Delete
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => { handleCancel(); setContextMenu(null); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+            >
+              Cancel Generation
+            </button>
+          )}
         </div>
       )}
     </div>

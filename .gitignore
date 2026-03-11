@@ -31,3 +31,9 @@ __pycache__/
 
 # Tauri build output
 src-tauri/target/
+
+# LoRA training data and outputs
+datasets/
+output/
+.training-env/
+examples/loras/

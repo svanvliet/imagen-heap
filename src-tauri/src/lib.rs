@@ -117,6 +117,14 @@ struct DownloadProgressEvent {
     total_bytes: u64,
 }
 
+/// Adapter download progress event sent to the frontend
+#[derive(Serialize, Clone)]
+struct AdapterDownloadProgressEvent {
+    adapter_id: String,
+    bytes_downloaded: u64,
+    total_bytes: u64,
+}
+
 /// Send an RPC request using raw components (thread-safe, no State<> dependency)
 fn send_rpc_raw(
     next_id: &Mutex<u64>,
@@ -236,10 +244,24 @@ async fn generate_image(state: State<'_, SidecarState>, config: serde_json::Valu
     let writer = state.writer.clone();
 
     tokio::task::spawn_blocking(move || {
-        send_rpc_raw(&next_id, &pending, &writer, "generate", config, 600)
+        send_rpc_raw(&next_id, &pending, &writer, "generate", config, 1800)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Cancel the current generation (short timeout — fire and forget)
+#[tauri::command]
+fn cancel_generation(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: cancel_generation");
+    send_rpc_raw(
+        &state.next_id,
+        &state.pending,
+        &state.writer,
+        "cancel_generation",
+        serde_json::json!({}),
+        5,
+    )
 }
 
 /// Get all models with status
@@ -317,6 +339,94 @@ fn reset_wizard(state: State<SidecarState>) -> Result<serde_json::Value, String>
     send_rpc(&state, "reset_wizard", serde_json::json!({}))
 }
 
+// --- Character management commands ---
+
+/// List all characters
+#[tauri::command]
+fn list_characters(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: list_characters");
+    send_rpc(&state, "list_characters", serde_json::json!({}))
+}
+
+/// Create a new character card
+#[tauri::command]
+fn create_character(state: State<SidecarState>, name: String, description: String, reference_image_paths: Vec<String>) -> Result<serde_json::Value, String> {
+    info!("Command: create_character name={}", name);
+    send_rpc(&state, "create_character", serde_json::json!({
+        "name": name,
+        "description": description,
+        "reference_image_paths": reference_image_paths,
+    }))
+}
+
+/// Update character metadata
+#[tauri::command]
+fn update_character(state: State<SidecarState>, character_id: String, updates: serde_json::Value) -> Result<serde_json::Value, String> {
+    info!("Command: update_character id={}", character_id);
+    send_rpc(&state, "update_character", serde_json::json!({
+        "character_id": character_id,
+        "updates": updates,
+    }))
+}
+
+/// Delete a character
+#[tauri::command]
+fn delete_character(state: State<SidecarState>, character_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: delete_character id={}", character_id);
+    send_rpc(&state, "delete_character", serde_json::json!({
+        "character_id": character_id,
+    }))
+}
+
+/// Get a single character by ID
+#[tauri::command]
+fn get_character(state: State<SidecarState>, character_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: get_character id={}", character_id);
+    send_rpc(&state, "get_character", serde_json::json!({
+        "character_id": character_id,
+    }))
+}
+
+/// Add a reference image to an existing character
+#[tauri::command]
+fn add_reference_image(state: State<SidecarState>, character_id: String, image_path: String) -> Result<serde_json::Value, String> {
+    info!("Command: add_reference_image id={}", character_id);
+    send_rpc(&state, "add_reference_image", serde_json::json!({
+        "character_id": character_id,
+        "image_path": image_path,
+    }))
+}
+
+/// Remove a reference image by index
+#[tauri::command]
+fn remove_reference_image(state: State<SidecarState>, character_id: String, image_index: u32) -> Result<serde_json::Value, String> {
+    info!("Command: remove_reference_image id={} index={}", character_id, image_index);
+    send_rpc(&state, "remove_reference_image", serde_json::json!({
+        "character_id": character_id,
+        "image_index": image_index,
+    }))
+}
+
+/// Set a LoRA file for a character
+#[tauri::command]
+fn set_character_lora(state: State<SidecarState>, character_id: String, lora_path: String, trigger_word: String) -> Result<serde_json::Value, String> {
+    info!("Command: set_character_lora id={}", character_id);
+    send_rpc(&state, "set_character_lora", serde_json::json!({
+        "character_id": character_id,
+        "lora_path": lora_path,
+        "trigger_word": trigger_word,
+    }))
+}
+
+/// Remove LoRA from a character
+#[tauri::command]
+fn remove_character_lora(state: State<SidecarState>, character_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: remove_character_lora id={}", character_id);
+    send_rpc(&state, "remove_character_lora", serde_json::json!({
+        "character_id": character_id,
+    }))
+}
+
 /// Reveal a model's folder in the system file manager
 #[tauri::command]
 fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle: AppHandle) -> Result<(), String> {
@@ -331,12 +441,66 @@ fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle:
         .map_err(|e| format!("Failed to reveal folder: {}", e))
 }
 
+// --- Adapter management commands ---
+
+/// Get available runtime providers (short timeout — avoids blocking UI on slow imports)
+#[tauri::command]
+fn get_available_providers(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: get_available_providers");
+    send_rpc_raw(
+        &state.next_id,
+        &state.pending,
+        &state.writer,
+        "get_available_providers",
+        serde_json::json!({}),
+        10,  // 10s timeout — heavy imports may take a while on first call
+    )
+}
+
+/// List all adapters with download status
+#[tauri::command]
+fn get_adapters(state: State<SidecarState>) -> Result<serde_json::Value, String> {
+    info!("Command: get_adapters");
+    send_rpc(&state, "get_adapters", serde_json::json!({}))
+}
+
+/// Download an adapter model (async, long-running)
+#[tauri::command]
+async fn download_adapter(state: State<'_, SidecarState>, adapter_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: download_adapter id={}", adapter_id);
+    let next_id = state.next_id.clone();
+    let pending = state.pending.clone();
+    let writer = state.writer.clone();
+    tokio::task::spawn_blocking(move || {
+        send_rpc_raw(&next_id, &pending, &writer, "download_adapter", serde_json::json!({"adapter_id": adapter_id}), 3600)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Delete a downloaded adapter
+#[tauri::command]
+fn delete_adapter(state: State<SidecarState>, adapter_id: String) -> Result<serde_json::Value, String> {
+    info!("Command: delete_adapter id={}", adapter_id);
+    send_rpc(&state, "delete_adapter", serde_json::json!({"adapter_id": adapter_id}))
+}
+
 /// Start the Python sidecar process and set up the stdout reader thread
 fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, pending: Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>) -> Result<(Child, Box<dyn Write + Send>), String> {
     info!("Starting Python sidecar: {} {}", python_path, script_path);
 
+    // Derive PYTHONPATH from the script path so imagen_heap package is importable
+    // Script is at .../python/src/imagen_heap/main.py → we need .../python/src/
+    let python_src_dir = std::path::Path::new(script_path)
+        .parent()  // .../python/src/imagen_heap/
+        .and_then(|p| p.parent())  // .../python/src/
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    info!("Setting PYTHONPATH={}", python_src_dir);
+
     let mut child = Command::new(python_path)
         .arg(script_path)
+        .env("PYTHONPATH", &python_src_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -408,6 +572,15 @@ fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, p
                                             };
                                             let _ = handle.emit("backend:download_progress", event);
                                         }
+                                    } else if method == "adapter_download_progress" {
+                                        if let Some(params) = &resp.params {
+                                            let event = AdapterDownloadProgressEvent {
+                                                adapter_id: params.get("adapter_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                                bytes_downloaded: params.get("bytes_downloaded").and_then(|v| v.as_u64()).unwrap_or(0),
+                                                total_bytes: params.get("total_bytes").and_then(|v| v.as_u64()).unwrap_or(0),
+                                            };
+                                            let _ = handle.emit("backend:adapter_download_progress", event);
+                                        }
                                     }
                                 }
                             } else if let Some(id) = resp.id {
@@ -455,6 +628,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SidecarState {
             process: Mutex::new(None),
             next_id: Arc::new(Mutex::new(1)),
@@ -480,7 +654,21 @@ pub fn run() {
                 .unwrap_or_default();
             info!("Resource dir: {:?}", resource_dir);
 
-            // Find the Python sidecar script
+            // --- Resolve Python interpreter ---
+            // Priority: 1) venv at ~/.imagen-heap/venv  2) system python3
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            let venv_python = std::path::PathBuf::from(&home)
+                .join(".imagen-heap/venv/bin/python3");
+
+            let python_path = if venv_python.exists() {
+                info!("Using venv Python: {:?}", venv_python);
+                venv_python.to_string_lossy().to_string()
+            } else {
+                info!("Venv not found at {:?}, falling back to system python3", venv_python);
+                "python3".to_string()
+            };
+
+            // --- Find the Python sidecar script ---
             let cwd = std::env::current_dir().unwrap_or_default();
             let script_candidates = vec![
                 // Dev mode: CWD is project root
@@ -501,7 +689,7 @@ pub fn run() {
             if let Some(path) = script_path {
                 let path_str = path.to_string_lossy().to_string();
                 info!("Using Python script: {}", path_str);
-                match start_sidecar("python3", &path_str, app.handle(), pending.clone()) {
+                match start_sidecar(&python_path, &path_str, app.handle(), pending.clone()) {
                     Ok((child, writer)) => {
                         let state: State<SidecarState> = app.state();
                         *state.process.lock().unwrap() = Some(child);
@@ -513,6 +701,49 @@ pub fn run() {
                     }
                     Err(e) => {
                         error!("Failed to start Python sidecar: {}", e);
+
+                        // If sidecar failed and no venv exists, show setup dialog
+                        if !venv_python.exists() {
+                            let setup_script = resource_dir.join("scripts/setup.sh");
+                            let setup_path = if setup_script.exists() {
+                                setup_script.to_string_lossy().to_string()
+                            } else {
+                                // Dev mode: try relative to CWD
+                                let dev_script = cwd.join("scripts/setup.sh");
+                                if dev_script.exists() {
+                                    dev_script.to_string_lossy().to_string()
+                                } else {
+                                    String::new()
+                                }
+                            };
+
+                            let msg = if setup_path.is_empty() {
+                                "Imagen Heap requires a Python environment to run.\n\n\
+                                 Please run the setup script included with the app:\n\n\
+                                 bash scripts/setup.sh\n\n\
+                                 Then relaunch Imagen Heap.".to_string()
+                            } else {
+                                format!(
+                                    "Imagen Heap requires a Python environment to run.\n\n\
+                                     Please open Terminal and run:\n\n\
+                                     bash \"{}\"\n\n\
+                                     This is a one-time setup (~5 minutes).\n\
+                                     Then relaunch Imagen Heap.",
+                                    setup_path
+                                )
+                            };
+
+                            warn!("Python environment not configured. Showing setup dialog.");
+                            let handle = app.handle().clone();
+                            tauri::async_runtime::spawn(async move {
+                                use tauri_plugin_dialog::DialogExt;
+                                handle.dialog()
+                                    .message(msg)
+                                    .title("Setup Required")
+                                    .blocking_show();
+                            });
+                        }
+
                         let _ = app.emit("backend:status", "error");
                     }
                 }
@@ -530,6 +761,7 @@ pub fn run() {
             ping_backend,
             get_backend_status,
             generate_image,
+            cancel_generation,
             get_models,
             is_first_run,
             get_default_downloads,
@@ -540,6 +772,19 @@ pub fn run() {
             mark_wizard_done,
             reset_wizard,
             reveal_model_folder,
+            list_characters,
+            create_character,
+            update_character,
+            delete_character,
+            get_character,
+            add_reference_image,
+            remove_reference_image,
+            set_character_lora,
+            remove_character_lora,
+            get_available_providers,
+            get_adapters,
+            download_adapter,
+            delete_adapter,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

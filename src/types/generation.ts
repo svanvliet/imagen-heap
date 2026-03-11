@@ -49,3 +49,20 @@ export interface GenerationError {
   message: string;
   suggestion?: string;
 }
+
+/** Character card for consistent identity generation */
+export interface Character {
+  id: string;
+  name: string;
+  description: string;
+  reference_images: string[];
+  thumbnail: string;
+  adapter_type: "auto" | "redux" | "ip-adapter" | "faceid" | "lora";
+  created_at: string;
+  last_used_at: string | null;
+  // LoRA fields (present when adapter_type === "lora")
+  lora_path?: string;
+  lora_filename?: string;
+  lora_file_size?: number;
+  trigger_word?: string;
+}

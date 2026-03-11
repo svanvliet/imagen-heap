@@ -20,6 +20,8 @@ interface GenerationState {
   generationError: string | null;
   currentImage: GenerationResult | null;
   history: GenerationResult[];
+  viewingProgress: boolean;
+  cancellationRequested: boolean;
 
   setPrompt: (prompt: string) => void;
   setNegativePrompt: (negativePrompt: string) => void;
@@ -35,6 +37,8 @@ interface GenerationState {
   setProgress: (progress: GenerationProgress | null) => void;
   setGenerationError: (error: string | null) => void;
   setCurrentImage: (result: GenerationResult) => void;
+  setViewingProgress: (viewing: boolean) => void;
+  cancelGeneration: () => void;
   selectHistoryItem: (index: number) => void;
   deleteHistoryItem: (id: string) => void;
   clearHistory: () => void;
@@ -72,6 +76,8 @@ export const useGenerationStore = create<GenerationState>()(
   generationError: null,
   currentImage: null,
   history: [],
+  viewingProgress: false,
+  cancellationRequested: false,
 
   setPrompt: (prompt) => set({ prompt }),
   setNegativePrompt: (negativePrompt) => set({ negativePrompt }),
@@ -101,7 +107,7 @@ export const useGenerationStore = create<GenerationState>()(
   setCfg: (cfg) => set({ cfg, qualityProfile: "custom" }),
   randomizeSeed: () => set({ seed: randomSeed() }),
   setGenerating: (isGenerating) =>
-    set({ isGenerating, generationStartTime: isGenerating ? Date.now() : null, generationError: null }),
+    set({ isGenerating, generationStartTime: isGenerating ? Date.now() : null, generationError: null, viewingProgress: isGenerating, cancellationRequested: false }),
   setProgress: (progress) => set({ progress }),
   setGenerationError: (error) => set({ generationError: error, isGenerating: false, progress: null, generationStartTime: null }),
   setCurrentImage: (result) =>
@@ -110,10 +116,14 @@ export const useGenerationStore = create<GenerationState>()(
       history: [result, ...s.history],
       isGenerating: false,
       progress: null,
+      viewingProgress: false,
     })),
+  setViewingProgress: (viewing) => set({ viewingProgress: viewing }),
+  cancelGeneration: () => set({ cancellationRequested: true }),
   selectHistoryItem: (index) =>
     set((s) => ({
       currentImage: s.history[index] ?? null,
+      viewingProgress: false,
     })),
   deleteHistoryItem: (id) =>
     set((s) => {

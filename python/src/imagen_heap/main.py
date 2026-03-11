@@ -18,8 +18,10 @@ from pathlib import Path
 from imagen_heap import __version__
 from imagen_heap.rpc.server import RpcServer
 from imagen_heap.providers import StubProvider
-from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig
+from imagen_heap.pipeline.orchestrator import PipelineOrchestrator, GenerationConfig, GenerationCancelled
 from imagen_heap.models.manager import ModelManager
+from imagen_heap.characters.manager import CharacterManager
+from imagen_heap.adapters.manager import AdapterManager
 
 # --- Logging setup ---
 # Logs go to both stderr (captured by Rust) and ~/.imagen-heap/logs/python.log
@@ -53,11 +55,18 @@ _stdout_lock = threading.Lock()
 
 
 def _send_notification(method: str, params: dict) -> None:
-    """Send a JSON-RPC notification (no id) to stdout (thread-safe)."""
+    """Send a JSON-RPC notification (no id) to stdout (thread-safe).
+
+    Silently drops the notification if the pipe is broken (e.g. the
+    frontend closed the sidecar connection while a download is running).
+    """
     msg = json.dumps({"jsonrpc": "2.0", "method": method, "params": params})
-    with _stdout_lock:
-        sys.stdout.write(msg + "\n")
-        sys.stdout.flush()
+    try:
+        with _stdout_lock:
+            sys.stdout.write(msg + "\n")
+            sys.stdout.flush()
+    except BrokenPipeError:
+        pass
 
 
 def create_server() -> RpcServer:
@@ -83,6 +92,8 @@ def create_server() -> RpcServer:
 
     orchestrator = PipelineOrchestrator(output_dir=output_dir, provider=provider)
     model_manager = ModelManager(models_dir=models_dir)
+    character_manager = CharacterManager(base_dir=base_dir)
+    adapter_manager = AdapterManager()
 
     # --- Core methods ---
 
@@ -125,14 +136,49 @@ def create_server() -> RpcServer:
             model_id=params.get("model_id", "flux-schnell-q8"),
             sampler=params.get("sampler", "euler"),
             scheduler=params.get("scheduler", "normal"),
+            character_id=params.get("character_id", None),
+            character_strength=params.get("character_strength", 0.6),
+            adapter_type=params.get("adapter_type", "auto"),
         )
 
-        # Auto-load model if provider supports it
-        if hasattr(provider, 'load_model') and hasattr(provider, '_loaded_model'):
-            needed = config.model_id
-            if provider._loaded_model != needed:
-                logger.info("Auto-loading model %s for generation", needed)
-                provider.load_model(needed)
+        # Mark character as used
+        if config.character_id:
+            try:
+                character_manager.mark_used(config.character_id)
+            except Exception:
+                logger.debug("Failed to mark character as used", exc_info=True)
+
+        # Resolve character reference images for Redux
+        reference_image_paths = None
+        if config.character_id:
+            # For LoRA characters, resolve LoRA path and trigger word from metadata
+            if config.adapter_type == "lora":
+                char_meta = character_manager.get_character(config.character_id)
+                if char_meta:
+                    config.lora_path = char_meta.get("lora_path")
+                    config.trigger_word = char_meta.get("trigger_word", "ohwx")
+                    if config.lora_path:
+                        # Auto-prepend trigger word to prompt if provided and not already present
+                        tw = (config.trigger_word or "").strip()
+                        if tw and tw.lower() not in config.prompt.lower():
+                            config.prompt = f"{tw}, {config.prompt}"
+                            logger.info("Auto-prepended trigger word '%s' to prompt", tw)
+                    else:
+                        logger.warning("LoRA character '%s' has no LoRA file, falling back to standard generation", config.character_id)
+                        config.adapter_type = "auto"
+
+            reference_image_paths = character_manager.get_reference_image_paths(config.character_id)
+            if reference_image_paths:
+                logger.info(
+                    "Character '%s': %d reference images, strength=%.2f",
+                    config.character_id, len(reference_image_paths), config.character_strength,
+                )
+            else:
+                logger.warning("Character '%s' has no valid reference images, falling back to standard generation", config.character_id)
+
+        # Auto-load model — this is done inside orchestrator.generate() where the
+        # generation lock is held, ensuring model loading is serialized too.
+        # We just need to tell the orchestrator which model to auto-load.
 
         def on_progress(job_id: str, step: int, total: int, preview: str | None) -> None:
             _send_notification("progress", {
@@ -142,8 +188,17 @@ def create_server() -> RpcServer:
                 "preview_base64": preview,
             })
 
-        result = orchestrator.generate(config, progress_callback=on_progress)
-        return result.to_dict()
+        try:
+            result = orchestrator.generate(config, progress_callback=on_progress, reference_image_paths=reference_image_paths)
+            return result.to_dict()
+        except GenerationCancelled:
+            logger.info("Generation cancelled by user")
+            raise ValueError("Generation cancelled")
+
+    def handle_cancel_generation(params: dict) -> dict:
+        """Cancel the current generation."""
+        orchestrator.cancel()
+        return {"success": True}
 
     # --- Model management methods ---
 
@@ -216,10 +271,147 @@ def create_server() -> RpcServer:
         """Get disk usage of downloaded models."""
         return model_manager.get_disk_usage()
 
+    # --- Character management methods ---
+
+    def handle_list_characters(params: dict) -> list[dict]:
+        """List all characters."""
+        return character_manager.list_characters()
+
+    def handle_create_character(params: dict) -> dict:
+        """Create a new character card."""
+        name = params.get("name", "").strip()
+        if not name:
+            raise ValueError("name is required")
+        return character_manager.create_character(
+            name=name,
+            description=params.get("description", ""),
+            reference_image_paths=params.get("reference_image_paths", []),
+        )
+
+    def handle_update_character(params: dict) -> dict:
+        """Update character metadata."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        updates = params.get("updates", {})
+        result = character_manager.update_character(character_id, updates)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    def handle_delete_character(params: dict) -> dict:
+        """Delete a character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        success = character_manager.delete_character(character_id)
+        return {"success": success, "character_id": character_id}
+
+    def handle_get_character(params: dict) -> dict:
+        """Get a single character by ID."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        result = character_manager.get_character(character_id)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    def handle_add_reference_image(params: dict) -> dict:
+        """Add a reference image to an existing character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        image_path = params.get("image_path", "")
+        if not image_path:
+            raise ValueError("image_path is required")
+        result = character_manager.add_reference_image(character_id, image_path)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    def handle_remove_reference_image(params: dict) -> dict:
+        """Remove a reference image by index."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        image_index = params.get("image_index")
+        if image_index is None:
+            raise ValueError("image_index is required")
+        result = character_manager.remove_reference_image(character_id, int(image_index))
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    # --- LoRA management ---
+
+    def handle_set_character_lora(params: dict) -> dict:
+        """Set a LoRA file for a character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        lora_path = params.get("lora_path", "")
+        if not lora_path:
+            raise ValueError("lora_path is required")
+        trigger_word = params.get("trigger_word", "ohwx")
+        result = character_manager.set_lora(character_id, lora_path, trigger_word)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    def handle_remove_character_lora(params: dict) -> dict:
+        """Remove LoRA from a character."""
+        character_id = params.get("character_id", "")
+        if not character_id:
+            raise ValueError("character_id is required")
+        result = character_manager.remove_lora(character_id)
+        if result is None:
+            raise ValueError(f"Character not found: {character_id}")
+        return result
+
+    # --- Adapter management ---
+
+    def handle_get_available_providers(params: dict) -> dict:
+        """Return which runtime providers are available."""
+        return orchestrator.get_available_providers()
+
+    def handle_get_adapters(params: dict) -> dict:
+        """List all adapters with download status."""
+        return {"adapters": adapter_manager.get_all_adapters()}
+
+    def handle_download_adapter(params: dict) -> dict:
+        """Download an adapter model from HuggingFace."""
+        adapter_id = params.get("adapter_id", "")
+        if not adapter_id:
+            raise ValueError("adapter_id is required")
+        hf_token = params.get("hf_token", None)
+
+        def on_adapter_progress(aid: str, downloaded: int, total: int) -> None:
+            _send_notification("adapter_download_progress", {
+                "adapter_id": aid,
+                "bytes_downloaded": downloaded,
+                "total_bytes": total,
+            })
+
+        return adapter_manager.download_adapter(
+            adapter_id,
+            progress_callback=on_adapter_progress,
+            hf_token=hf_token,
+        )
+
+    def handle_delete_adapter(params: dict) -> dict:
+        """Delete a downloaded adapter."""
+        adapter_id = params.get("adapter_id", "")
+        if not adapter_id:
+            raise ValueError("adapter_id is required")
+        success = adapter_manager.delete_adapter(adapter_id)
+        return {"success": success, "adapter_id": adapter_id}
+
     server.register("ping", handle_ping)
     server.register("get_device_info", handle_get_device_info)
     server.register("get_memory_status", handle_get_memory_status)
     server.register("generate", handle_generate, background=True)
+    server.register("cancel_generation", handle_cancel_generation)
     server.register("get_models", handle_get_models)
     server.register("get_downloaded_models", handle_get_downloaded_models)
     server.register("get_default_downloads", handle_get_default_downloads)
@@ -231,6 +423,23 @@ def create_server() -> RpcServer:
     server.register("save_hf_token", handle_save_hf_token)
     server.register("delete_model", handle_delete_model)
     server.register("get_disk_usage", handle_get_disk_usage)
+
+    # Character management
+    server.register("list_characters", handle_list_characters)
+    server.register("create_character", handle_create_character)
+    server.register("update_character", handle_update_character)
+    server.register("delete_character", handle_delete_character)
+    server.register("get_character", handle_get_character)
+    server.register("add_reference_image", handle_add_reference_image)
+    server.register("remove_reference_image", handle_remove_reference_image)
+    server.register("set_character_lora", handle_set_character_lora)
+    server.register("remove_character_lora", handle_remove_character_lora)
+
+    # Adapter management
+    server.register("get_available_providers", handle_get_available_providers)
+    server.register("get_adapters", handle_get_adapters)
+    server.register("download_adapter", handle_download_adapter, background=True)
+    server.register("delete_adapter", handle_delete_adapter)
 
     return server
 

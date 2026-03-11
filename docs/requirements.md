@@ -213,6 +213,16 @@ Advanced Mode is opt-in per session or globally. It reveals pipeline internals.
 | FR-056 | Import custom models from local filesystem (safetensors, GGUF, MLX format). | Imported model is registered in catalog and usable in generation. |
 | FR-057 | Import community LoRAs from filesystem or URL. | LoRA is registered; user can select it in generation; weight slider 0.0–1.5. |
 
+### 5.5b Adapter Management
+
+| ID | Requirement | Acceptance Criteria |
+|----|-------------|---------------------|
+| FR-058 | Adapter catalog: separate "Adapters" tab in Model Manager showing downloadable adapter models (Redux, ControlNet, LoRA, etc.) distinct from base generation models. | Adapters tab displays adapter name, type, compatible base models, size, license, download status. |
+| FR-059 | Redux adapter: gated HuggingFace model (`FLUX.1-Redux-dev`) downloadable from Adapters tab. Handles gate/auth errors with same token flow as base models. | User can download Redux adapter, see progress, handle auth/license errors identically to base model downloads. |
+| FR-060b | Inline adapter download: when user selects a character for generation and the required adapter (Redux) is not downloaded, show an inline download prompt in the sidebar with one-click download and progress. | User sees clear "Redux adapter required" callout with download button; download starts inline with progress bar; on completion, character generation works immediately. |
+| FR-061b | Adapter status check: backend can report whether a specific adapter is downloaded/cached without attempting to load it. | `get_adapters` RPC returns adapter list with `downloaded` boolean; frontend uses this to show correct UI state. |
+| FR-062b | Adapter deletion: user can delete downloaded adapters from Adapters tab to reclaim disk space. | Delete button removes adapter cache files; status updates to "available"; disk usage recalculated. |
+
 ### 5.6 Prompt Assistance
 
 | ID | Requirement | Acceptance Criteria |
@@ -346,8 +356,10 @@ For current internal/personal use, "Fast Draft" defaults to FLUX.1-schnell and "
 
 | ID | Requirement | Acceptance Criteria |
 |----|-------------|---------------------|
-| CC-001 | Identity adapters (InstantID, PhotoMaker, PuLID) must function on Apple Silicon via MLX or PyTorch MPS without CUDA dependency. | Each adapter generates successfully on M3 Max; no CUDA code paths are invoked. |
-| CC-002 | The app auto-selects the best available identity adapter based on: input type (single face photo → InstantID; multiple reference images → PhotoMaker), model compatibility, and available memory. | Auto-selection logic is documented; user can see which adapter was chosen; override is available. |
+| CC-001 | Identity adapters must function on Apple Silicon via MLX or PyTorch MPS without CUDA dependency. Three adapter paths: Redux (mflux/MLX, style influence), IP-Adapter v2 (FLUX/diffusers, CLIP-based composition), FaceID PlusV2 (SDXL/diffusers + InsightFace, true facial identity). | Each adapter generates successfully on M3 Max (and earlier M1/M2); no CUDA code paths are invoked. |
+| CC-001b | The runtime provider system supports multiple simultaneous providers (MLX primary, diffusers secondary). The `PipelineOrchestrator` routes to the appropriate provider based on adapter type. DiffusersProvider supports both FLUX (FluxPipeline) and SDXL (StableDiffusionXLPipeline). | Standard generation and Redux use MLXProvider; IP-Adapter and FaceID use DiffusersProvider; switching is transparent to the user. |
+| CC-001c | FaceID adapter uses InsightFace (via ONNX Runtime + CoreML EP) for face embedding extraction, producing 512-dim ArcFace vectors passed to IP-Adapter FaceID PlusV2 SDXL. | Face embeddings extracted from reference images match the identity in generated output (ArcFace cosine similarity ≥ 0.5). |
+| CC-002 | The app selects the appropriate identity adapter based on: character's configured adapter type, model compatibility, and available providers. User can choose adapter type per character (Auto, Redux, IP-Adapter, FaceID). | Auto-selection is documented; user can override adapter type in character edit; generation routes to correct provider. |
 | CC-003 | Character identity preservation is testable: given the same Character Card and 10 diverse scene prompts, an automated face similarity metric (e.g., ArcFace cosine similarity) scores ≥0.5 on ≥7/10 outputs. | Automated test with ArcFace embedding comparison passes threshold. |
 | CC-004 | Pose extraction (OpenPose, depth, canny) runs on-device as a preprocessing step; extracted map is previewed before generation. | Extraction completes in ≤5 seconds for a 1024×1024 input; preview is displayed. |
 | CC-005 | The 2D skeleton editor supports at minimum 18 body keypoints (COCO format) and basic face landmarks. | All keypoints are draggable; skeleton renders correctly; generation uses edited skeleton. |
@@ -396,7 +408,7 @@ If pursued during MVP, it must remain explicitly experimental and not delay P0 d
 | PA-003 | Desktop shell: Tauri (selected). | Frontend in web technologies (HTML/CSS/JS or framework like React/Svelte); native bridge for file system, keychain, GPU info. |
 | PA-004 | Inference backend: Python process with diffusers-compatible pipeline orchestration. | App launches and manages a Python sidecar process; communication via IPC (HTTP/localhost or stdio). |
 | PA-005 | Models are stored on the local filesystem in a user-configurable directory. No cloud-only model storage. | App must handle external drives, symlinks, and storage migration. |
-| PA-006 | Runtime provider interface must abstract: model loading, inference execution, memory queries, and device capability checks. | Adding a new provider (e.g., DirectML for Windows) requires implementing the provider interface, not modifying core logic. |
+| PA-006 | Runtime provider interface must abstract: model loading, inference execution, memory queries, and device capability checks. Multiple providers can coexist (e.g., MLX for standard generation + diffusers/MPS for identity adapters). DiffusersProvider handles both FLUX and SDXL pipelines. | Adding a new provider requires implementing the `RuntimeProvider` interface, not modifying core logic. Orchestrator routes to correct provider based on generation mode. |
 | PA-007 | App must be code-signed and notarized for macOS distribution. | Build pipeline produces a signed .dmg or .app bundle. |
 | PA-008 | Python backend dependencies must be bundled within the app. The app embeds a full Python runtime (Decision: embedded runtime selected over user-managed environments). | User does not interact with pip, conda, or virtualenv. Python runtime is embedded in the app bundle; no external Python installation required. |
 

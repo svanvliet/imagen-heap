@@ -1,7 +1,7 @@
 # Implementation Plan: Imagen Heap
 
-**Status:** Draft
-**Last Updated:** 2026-03-07
+**Status:** Active
+**Last Updated:** 2026-03-08
 **Requirements Reference:** [docs/requirements.md](./requirements.md)
 **Research Reference:** [docs/research.md](./research.md)
 
@@ -153,7 +153,7 @@ Communication between the Tauri Rust backend and the Python sidecar uses **JSON-
 
 The MVP is broken into 10 milestones. Each milestone produces a working, testable increment.
 
-> **Implementation note (M1–M4 status):** M1 (scaffold), M2 (generation UI/pipeline), M2b (real inference & downloads), M3 (model management), and M4 (style presets & prompt tools) are all complete. Real FLUX image generation is working end-to-end on Apple Silicon via MLX. Two models downloaded: flux-schnell-mflux-q8 (17GB) and flux-dev-q8 (54GB). App icon, build scripts, settings persistence, and prompt templates all shipped. Next: M5 (Gallery & History).
+> **Implementation note (M1–M5 status):** M1 (scaffold), M2 (generation UI/pipeline), M2b (real inference & downloads), M3 (model management), and M4 (style presets & prompt tools) are all complete. M5 character system CRUD + UI is done; Redux adapter integration (5.5) is next. Real FLUX image generation is working end-to-end on Apple Silicon via MLX. Two models downloaded: flux-schnell-mflux-q8 (17GB) and flux-dev-q8 (54GB). App icon, build scripts, settings persistence, prompt templates, and v0.1.0 release all shipped. Next: M5.5 (Redux adapter).
 
 ---
 
@@ -580,64 +580,424 @@ The MVP is broken into 10 milestones. Each milestone produces a working, testabl
 
 ---
 
-### Milestone 5: Character System
+### Milestone 5: Character System ✅
 
-**Goal:** Users create Character Cards, apply them to generations, and get consistent character identity across scenes.
+**Goal:** Users create Character Cards, apply them to generations, and get consistent character identity across scenes using mflux Redux adapter.
+
+> **Implementation note (M5 status):** All tasks complete. Character CRUD, avatar row UI, creation dialog, strength control, Redux pipeline integration, adapter management system (Model Manager "Adapters" tab + inline download), auth/license/timeout fixes all shipped. Identity preservation is limited by Redux's holistic approach (style + content, not face-specific) — see task 5.7 for research and future opportunities.
 
 #### Tasks
 
-**5.1 — Python: Identity adapter integration**
-- Implement identity adapter manager:
-  - `InstantIDAdapter` — for single-face reference (default)
-  - `PhotoMakerAdapter` — for multi-reference images
-  - `PuLIDAdapter` — for FLUX-specific workflows
-- Auto-selection heuristic (CC-002):
-  - 1 face image + FLUX model → PuLID-FLUX
-  - 1 face image + other model → InstantID
-  - 2+ reference images → PhotoMaker
-  - User can override in Advanced Mode
-- Each adapter: `prepare(reference_images)`, `apply(pipeline, strength)`, `get_memory_estimate()`
-- Face detection/cropping preprocessing for reference images
-- Identity strength parameter (0.0–1.0) maps to adapter weight
+**5.1 — Python: Identity adapter integration (REVISED)** ✅ → replaced by 5.5
 
-**5.2 — Character Card CRUD**
-- RPC methods: `create_character`, `update_character`, `delete_character`, `list_characters`, `get_character`
-- Character data stored in SQLite `characters` + `character_images` tables
-- Reference images copied to user data directory (not referenced from original location)
-- Auto-generate thumbnail from first reference image
+~~Original plan called for InstantID, PhotoMaker, PuLID adapters. Research confirmed these are PyTorch/CUDA-only with no MLX ports. See `docs/research.md` §8 for full analysis.~~
 
-**5.3 — Character Card UI**
-- **Character avatar row** (above prompt in left sidebar):
-  - Horizontal row of small circular avatars
-  - Selected character has accent ring
-  - "None" option (no character) as first item
-  - "+" button to create new character
-  - Click avatar to select; long-press or right-click for edit/delete
-- **Character creation dialog:**
-  - Modal overlay with clean form:
-    - Name field (required)
-    - Drag-and-drop zone for 1–5 reference images (shows previews in a grid)
-    - Optional text description textarea ("Describe features, clothing, etc.")
-    - Auto-detected adapter type shown as info badge
-    - "Create" button
-  - After creation: character appears in avatar row, auto-selected
-- **Character detail panel** (right panel, when a character is selected):
-  - Shows reference images, name, description
-  - Identity strength slider ("Subtle" — "Balanced" — "Strong")
-  - Adapter type info (auto-selected or manual override in Advanced Mode)
-  - "Edit" and "Delete" buttons
-  - Last used date
-- **Identity strength slider:**
-  - In Simple Mode: 3-position preset (Subtle=0.3, Balanced=0.6, Strong=0.9)
-  - In Advanced Mode: continuous 0.0–1.0 slider
+**Replaced by:** Task 5.5 (Redux adapter integration) below.
 
-**5.4 — Generation with character**
-- When a character is selected, generation pipeline includes identity adapter
-- Pre-generation memory check: warn if character + model + resolution may exceed memory
-- Metadata records: character ID, adapter type, adapter strength
-- Character's `last_used_at` updated on each generation
+**5.2 — Character Card CRUD** ✅
 
-**Deliverable:** Users create characters from face images, select them from an avatar row, and generate images with consistent character identity. Strength is controllable.
+- CharacterManager class with JSON file storage in `~/.imagen-heap/characters/{id}/`
+- RPC handlers: `list_characters`, `create_character`, `update_character`, `delete_character`, `get_character`
+- Reference images copied to character directory, thumbnail auto-generated via PIL
+- 5 Rust Tauri commands registered and forwarding to Python RPC
+- TypeScript API wrappers + Character type in `types/generation.ts`
+- Zustand character store with persistence (`selectedCharacterId`, `characterStrength`)
+
+**5.3 — Character Card UI** ✅
+
+- **CharacterAvatarRow**: horizontal scrolling circular avatars in sidebar, accent ring selection, "None" button, "+" create button, right-click context menu with delete
+- **CharacterCreateDialog**: modal with name field, description textarea, native file picker (tauri-plugin-dialog) for 1–5 reference images with preview grid, Create button, auto-selects on creation
+- **CharacterStrengthControl**: 3 presets (Subtle 0.3 / Balanced 0.6 / Strong 0.9) + fine-tune slider with percentage display
+- Character section placed above Prompt in sidebar
+- Character name badge in Canvas metadata display
+
+**5.4 — Generation with character (metadata wiring)** ✅
+
+- GenerationConfig extended with `character_id` and `character_strength` (Python + TypeScript)
+- useGeneration hook passes character params to generateImage API call
+- Character's `last_used_at` updated on each generation via `character_manager.mark_used()`
+- Character info stored in generation result metadata
+
+**5.5 — Redux adapter integration** ✅
+
+Wire `Flux1Redux` from mflux into the generation pipeline so character reference images actually influence the generated output.
+
+- **5.5.1 — MLXProvider: Redux mode** ✅
+  - `text_to_image_with_character()` method using `Flux1Redux`
+  - Validates model compatibility (requires FLUX.1-dev, not schnell)
+  - Caches `Flux1Redux` instance separately from `Flux1`
+  - Reference image paths validated, strength applied uniformly
+  - Progress callbacks refactored to work with both model types
+
+- **5.5.2 — CharacterManager: resolve image paths for pipeline** ✅
+  - `get_reference_image_paths(character_id)` returns validated absolute paths
+  - Skips missing files, warns if no valid images remain
+
+- **5.5.3 — Generate handler: wire character into pipeline** ✅
+  - `handle_generate()` resolves reference images via CharacterManager
+  - Orchestrator accepts `reference_image_paths`, routes to Redux or standard mode
+  - Graceful fallback to standard generation if no valid reference images
+
+- **5.5.4 — Frontend: model compatibility check** ✅
+  - CharacterStrengthControl shows amber warning when schnell model selected with character active
+  - Adapter type badge shows "redux" instead of "auto"
+
+- **5.5.5 — Testing and validation** ✅
+  - All 16 frontend + 35 Python tests passing
+  - TypeScript and Rust compile clean
+
+**5.6 — Adapter management system** ✅
+
+The Redux adapter (`FLUX.1-Redux-dev`) is a gated HuggingFace model that must be downloaded before character generation works. This task adds a proper download/management UX — both a dedicated "Adapters" tab in the Model Manager and an inline download prompt in the character section.
+
+- **5.6.1 — Python: Adapter registry and manager** ✅
+  - `AdapterEntry` dataclass + `ADAPTER_REGISTRY` with Redux entry in `python/src/imagen_heap/adapters/`
+  - `AdapterManager` class: download, delete, status check via HF cache detection
+  - Shares HF token with ModelManager (`~/.imagen-heap/models/.hf_token`)
+  - AUTH_REQUIRED vs LICENSE_REQUIRED error classification (token present + gated = license, no token + gated = auth)
+
+- **5.6.2 — Python: RPC handlers for adapters** ✅
+  - `get_adapters`, `download_adapter`, `delete_adapter` handlers registered in main.py
+  - Download progress notifications via `adapter_download_progress` events
+
+- **5.6.3 — Rust: Tauri commands for adapters** ✅
+  - 3 Tauri commands + `AdapterDownloadProgressEvent` struct + notification forwarding
+  - generate_image timeout increased from 600s → 1800s (30 min) to accommodate Redux generation
+
+- **5.6.4 — Frontend: Adapter store and API wrappers** ✅
+  - Zustand `useAdapterStore` with download tracking and `isReduxAvailable()` computed check
+  - `useAdapterDownloadProgress` hook for backend event listening
+  - Tauri API wrappers: `getAdapters()`, `downloadAdapter()`, `deleteAdapter()`
+
+- **5.6.5 — Frontend: Model Manager "Adapters" tab** ✅
+  - Tab bar at top of ModelManager: "Models" | "Adapters" (with `initialTab` prop for deep-linking)
+  - AdapterCard component with full download/delete/auth/license error handling
+  - Shared HF token input between tabs
+
+- **5.6.6 — Frontend: Inline Redux download in character section** ✅
+  - CharacterStrengthControl shows amber callout when Redux not downloaded
+  - One-click download button + inline progress bar + percentage
+  - License-required errors show clickable HuggingFace link for license acceptance
+  - On completion: callout disappears, generate becomes available
+
+- **5.6.7 — MLXProvider: gated repo error handling** ✅
+  - `_ensure_redux_loaded()` catches `GatedRepoError` → returns `ADAPTER_NOT_AVAILABLE` structured error
+  - Progress callback error logging added (try/except in ProgressReporter.call_in_loop)
+
+**Deliverable:** ✅ Model Manager has "Models" and "Adapters" tabs. Redux adapter downloadable with full auth/license/progress UX. Character section shows inline download prompt when Redux is missing. Character generation works end-to-end once adapter is downloaded.
+
+**5.7 — Identity preservation research & tuning** 🔲
+
+Investigation into improving character resemblance beyond Redux's holistic approach.
+
+- **Current limitation:** Redux embeds reference images as general visual context (style + content + composition), NOT facial identity. Generated images have similar aesthetic but don't precisely match facial features.
+- **Confirmed not available in mflux:** IP-Adapter, InstantID, PhotoMaker, PuLID (all PyTorch/CUDA-only)
+- **mflux variants explored:** `concept_attention` (heatmap/concept extraction, not identity), `kontext` (in-context editing, potential complement), `in_context` (fill/dev variants)
+- **Best current tuning:** Strength 0.85–0.95, 2–3 clear front-facing photos, describe facial features in prompt, use FLUX.1-dev (not schnell)
+- **Future opportunity:** Monitor mflux upstream for native identity adapters. When PuLID/IP-Adapter support lands, integrate as additional adapter types using the same Adapters tab pattern from M5.6.
+- See `docs/research.md` §8 for full analysis
+
+---
+
+### Milestone 5b: Multi-Runtime & IP-Adapter Face Identity
+
+**Goal:** Add HuggingFace `diffusers` with PyTorch MPS as a secondary runtime provider, enabling XLabs-AI IP-Adapter v2 for true face-identity character generation. Users can choose between Redux (holistic style influence) and IP-Adapter (CLIP-based identity) per character.
+
+> **Research reference:** See `docs/research.md` §8c for full options evaluation, dependency analysis, performance estimates, and architecture decision.
+
+#### Tasks
+
+**5b.1 — Python: DiffusersProvider class** ✅
+
+Create a new `RuntimeProvider` implementation that uses HuggingFace `diffusers` FluxPipeline with PyTorch MPS backend.
+
+- New file: `python/src/imagen_heap/providers/diffusers_provider.py`
+- Implements `RuntimeProvider` interface: `load_model()`, `unload_model()`, `text_to_image()`, `get_device_info()`, `get_memory_status()`
+- Add `text_to_image_with_identity()` method for IP-Adapter face conditioning
+- Device detection: use `"mps"` on Apple Silicon, `"cpu"` fallback
+- Uses `torch.bfloat16` dtype for memory efficiency
+- Memory management: `enable_model_cpu_offload()` for lower peak usage
+- Progress callback integration with diffusers pipeline callback system
+- Lazy imports: `torch` and `diffusers` only imported when DiffusersProvider is actually instantiated
+
+**5b.2 — Python: IP-Adapter loading and face conditioning** ✅
+
+Wire XLabs-AI IP-Adapter v2 into the DiffusersProvider.
+
+- Load CLIP ViT-L/14 image encoder (`openai/clip-vit-large-patch14`)
+- Load IP-Adapter weights (`XLabs-AI/flux-ip-adapter-v2`, `ip_adapter.safetensors`)
+- Accept reference face image(s), preprocess to CLIP input format
+- `set_ip_adapter_scale()` maps to character strength (0.0–1.0)
+- Handle adapter loading/unloading lifecycle (free memory when switching back to MLX)
+
+**5b.3 — Python: Provider registry and routing** ✅
+
+Update `PipelineOrchestrator` and `main.py` to support multi-provider routing.
+
+- Lazy-loaded DiffusersProvider as secondary provider on orchestrator
+- Routing logic in `generate()` based on `config.adapter_type`:
+  - Standard text-to-image → MLXProvider (always, for speed)
+  - Redux character → MLXProvider (current behavior)
+  - IP-Adapter character → DiffusersProvider
+- PIL Image handling in `_process_result()` alongside mflux GeneratedImage
+- New RPC: `get_available_providers` — returns which providers are installed and functional
+- Full stack wired: Python RPC → Rust command → TypeScript API
+
+**5b.4 — Python: Dependencies and installation** ✅
+
+All diffusers runtime dependencies already installed (torch 2.10.0, diffusers 0.37.0, accelerate 1.13.0).
+
+- DiffusersProvider catches `ImportError` gracefully if torch not installed
+- `is_available()` module-level check for torch + diffusers + MPS
+
+**5b.5 — Adapter registry: IP-Adapter entries** ✅
+
+Added IP-Adapter as downloadable adapters in the existing adapter management system.
+
+- New `ADAPTER_REGISTRY` entries:
+  - `flux-ip-adapter-v2` — XLabs-AI IP-Adapter weights (~1.5GB), requires_provider="diffusers"
+  - `clip-vit-large-patch14` — CLIP image encoder (~1.7GB), requires_provider="diffusers"
+- Added `requires_provider` field to AdapterEntry for frontend provider awareness
+- Adapters tab shows these with appropriate metadata
+
+**5b.6 — Frontend: Adapter type selector per character** ✅
+
+Let users choose which adapter type to use per character.
+
+- Character edit dialog: "Identity Method" selector (Auto/Redux/IP-Adapter) with visual cards
+- Updated `Character` type: `adapter_type` field with values `"auto"` | `"redux"` | `"ip-adapter"`
+- IP-Adapter option disabled with message if diffusers provider not available
+- adapter_type saved with character updates, passed through generation pipeline
+- useGeneration hook reads selected character's adapter_type
+
+**5b.7 — Frontend: Provider status indicator** ✅
+
+Show users which runtime providers are available and active.
+
+- CharacterStrengthControl: provider badge shows "redux" or "ip-adapter" based on character's adapter type
+- Character dialog queries `get_available_providers` to enable/disable options
+- Adapter entries include `requires_provider` field for frontend filtering
+
+**5b.8 — Testing and validation** 🔲
+
+- Unit tests for provider routing (6 new tests added, all passing)
+- Integration test: generate image with IP-Adapter on MPS (manual, needs user)
+- Verify MLX provider still works identically (no regression)
+- Test provider switching (MLX → diffusers → MLX) memory behavior
+- Test graceful degradation when torch not installed
+
+**Deliverable:** Users can select IP-Adapter as a character's adapter type. When selected, generation routes through the diffusers/PyTorch MPS pipeline with XLabs-AI IP-Adapter v2, producing images with stronger identity preservation than Redux. Standard generation continues to use the fast MLX provider. Provider availability is visible in the UI.
+
+**Key UX consideration:** The diffusers pipeline requires FLUX model weights in original HuggingFace format (~24-34GB additional download). This should be clearly communicated in the adapter download flow with estimated disk space and download time.
+
+---
+
+### Milestone 5c: SDXL + IP-Adapter FaceID — True Face Identity
+
+**Goal:** Add SDXL + IP-Adapter FaceID PlusV2 as a third adapter type, giving users true facial identity preservation via InsightFace face embeddings. This is the recommended adapter for character consistency across diverse scenes.
+
+> **Research reference:** See `docs/research.md` §8d for InsightFace macOS compatibility, FaceID PlusV2 architecture, and trade-off analysis.
+
+#### Why This Matters
+
+The XLabs IP-Adapter v2 for FLUX uses CLIP embeddings (semantic/style features), NOT facial identity. Testing confirmed generated images "look nothing like" reference photos. FaceID PlusV2 uses InsightFace ArcFace embeddings (512-dim face geometry vectors) which encode the actual distinguishing facial features needed for character consistency.
+
+#### Tasks
+
+**5c.1 — Python: InsightFace integration** ✅
+
+Install InsightFace and ONNX Runtime. Create a face embedding extraction module.
+
+- `pip install insightface onnxruntime` (both have ARM64 native wheels)
+- New file: `python/src/imagen_heap/providers/face_embedding.py`
+  - `FaceEmbeddingExtractor` class wrapping `insightface.app.FaceAnalysis`
+  - Auto-download buffalo_l model on first use (~300MB)
+  - CoreML Execution Provider for Apple Neural Engine acceleration
+  - CPU fallback for older macOS or missing CoreML
+  - `extract_face_embedding(image) -> torch.Tensor` — returns 512-dim ArcFace vector
+  - `extract_face_embeddings(images) -> list[torch.Tensor]` — batch extraction
+  - Error handling: no face detected → clear error message
+  - Multiple faces → use largest face (closest to camera)
+- Unit tests: face detection, embedding shape, no-face error case
+
+**5c.2 — Python: SDXL FaceID PlusV2 provider support** ✅
+
+Extend DiffusersProvider to support StableDiffusionXLPipeline with FaceID PlusV2 adapter.
+
+- Extend `DiffusersProvider` with SDXL pipeline support:
+  - `_load_sdxl_pipeline()` — loads `stabilityai/stable-diffusion-xl-base-1.0` with float16
+  - `_load_faceid_adapter()` — loads `h94/IP-Adapter-FaceID` weights + LoRA
+  - `text_to_image_with_faceid()` — generates using `ip_adapter_image_embeds` parameter
+  - FaceID PlusV2 uses both InsightFace embedding AND CLIP shortcut features
+- Memory management:
+  - Unload FLUX pipeline before loading SDXL (they can't coexist in memory)
+  - `enable_model_cpu_offload()` for SDXL pipeline
+  - Pipeline switching tracked by `self._active_pipeline` state
+- Adapter loading:
+  - `pipe.load_ip_adapter("h94/IP-Adapter-FaceID", weight_name="ip-adapter-faceid-plusv2_sdxl.bin")`
+  - Load FaceID LoRA: `ip-adapter-faceid-plusv2_sdxl_lora.safetensors`
+  - `set_ip_adapter_scale()` maps to character strength (0.0-1.0), default 0.7
+- Generation:
+  - Extract face embedding from reference images via FaceEmbeddingExtractor
+  - Pass as `ip_adapter_image_embeds` to pipeline __call__
+  - SDXL generates at 1024x1024 native resolution
+- Unit tests: pipeline loading, adapter loading, embedding passthrough
+
+**5c.3 — Python: Orchestrator routing for FaceID** ✅
+
+Update PipelineOrchestrator to route `adapter_type="faceid"` to SDXL FaceID.
+
+- Add `"faceid"` to adapter_type routing in `_resolve_provider_for_character()`
+- FaceID → DiffusersProvider (same provider, different pipeline internally)
+- Update `generate()` to pass `pipeline_type="sdxl_faceid"` or similar discriminator
+- GenerationResult metadata: `inference_provider="diffusers"`, `resolved_adapter="sdxl-faceid-plusv2"`
+- `get_available_providers()` response includes faceid availability check (insightface installed + SDXL model available)
+- Graceful fallback: if InsightFace not installed, faceid not available
+- Unit tests: routing tests for faceid adapter type
+
+**5c.4 — Adapter registry: SDXL FaceID entries** ✅
+
+Add SDXL FaceID downloadable entries to adapter management.
+
+- New `ADAPTER_REGISTRY` entries:
+  - `sdxl-base-1.0` — Stability AI SDXL base model (~6.5GB), type="model"
+  - `ip-adapter-faceid-plusv2-sdxl` — h94 FaceID PlusV2 weights (~1.6GB), requires_provider="diffusers"
+  - `ip-adapter-faceid-plusv2-sdxl-lora` — FaceID LoRA (~400MB), requires_provider="diffusers"
+  - `insightface-buffalo-l` — InsightFace buffalo_l model (~300MB), type="face_model"
+- Adapter download flow handles HuggingFace repos and ONNX model downloads
+- Estimated total new disk space: ~8.8GB
+
+**5c.5 — Frontend: FaceID adapter type option** ✅
+
+Add FaceID as a fourth Identity Method option in the character dialog.
+
+- CharacterDialog "Identity Method" picker: add **FaceID** card
+  - Icon: face/shield icon to convey identity preservation
+  - Description: "True facial identity — best for consistent characters across diverse scenes"
+  - Badge: "SDXL" to indicate different base model
+  - Disabled with tooltip if InsightFace/SDXL not available
+- Update `Character.adapter_type` union: add `"faceid"` value
+- CharacterStrengthControl: "faceid" provider badge, strength default 0.7
+- `getRequiredAdapterIds()`: "faceid" → ["sdxl-base-1.0", "ip-adapter-faceid-plusv2-sdxl", "ip-adapter-faceid-plusv2-sdxl-lora", "insightface-buffalo-l"]
+- Adapter download prompt: show all required adapters with total size (~8.8GB)
+- Resolution note: output is 1024x1024 from SDXL (same as FLUX)
+
+**5c.6 — Frontend: Adapter comparison UX** ✅
+
+Help users understand the three adapter types with clear, visual comparison.
+
+- Tooltip or info popover on Identity Method cards explaining trade-offs:
+  - Redux: "Fast, uses FLUX — captures style and general appearance"
+  - IP-Adapter: "Slower, uses FLUX — transfers composition and visual style from reference"
+  - FaceID: "Moderate speed, uses SDXL — **best for face likeness**. Recommended for character consistency."
+- First-time selection of FaceID shows brief explanation of required downloads
+- Generation output badge shows which provider/adapter was used
+
+**5c.7 — Testing and validation**
+
+- Unit tests: InsightFace extraction, SDXL pipeline, FaceID routing (target: 10+ new tests)
+- Integration test: generate image with FaceID on M3 Max
+- Visual comparison: same character + same prompt → compare Redux vs IP-Adapter vs FaceID output
+- Verify FLUX paths (standard, Redux, IP-Adapter) still work identically (no regression)
+- Test pipeline switching memory behavior (FLUX → SDXL → FLUX)
+- Test graceful degradation when InsightFace not installed
+
+**Deliverable:** Users can select "FaceID" as a character's identity method. When selected, reference images are processed through InsightFace for face embedding extraction, then passed to SDXL + IP-Adapter FaceID PlusV2. Generated images preserve the character's actual facial features across diverse prompts. All three adapter types coexist — the user chooses based on their priority (speed vs. style vs. face identity).
+
+---
+
+### Milestone 5d: LoRA Character Identity — Import & Inference
+
+**Goal:** Users import a pre-trained FLUX LoRA (.safetensors) into a character card and generate images with dramatically better facial likeness than any zero-shot adapter. The LoRA integrates into the existing character system as a fifth identity method alongside Auto/Redux/IP-Adapter/FaceID.
+
+**Why:** IP-Adapter FaceID PlusV2 encodes faces into a 512-dim vector — too compressed for true likeness. LoRA fine-tunes the model itself to learn a specific person's face during training, capturing micro-details that adapters cannot. Training happens externally (PC with GPU, cloud services like Replicate/RunPod, or CLI scripts we provide), then the trained .safetensors file is imported into the app.
+
+**Key Discovery:** mflux 0.16.8+ natively supports `--lora-paths` and `--lora-scales`, meaning LoRA inference can use the **fast MLX path** (~60s) instead of requiring the slower diffusers/PyTorch path. This is a major UX win — LoRA characters get the same speed as standard generation.
+
+**Approach:** Hybrid strategy — keep all existing adapters (Redux/IP-Adapter/FaceID) as zero-training options, add LoRA as the "pro" quality tier with external training.
+
+#### Phase 1: LoRA Import + Inference (M5d-1 through M5d-5) — ✅ COMPLETE
+
+**M5d-1 — CLI training scripts ✅ DONE**
+- `scripts/setup-training.sh` — One-time setup of ai-toolkit training environment
+- `scripts/prepare-dataset.sh` — Dataset prep (copy/rename/caption reference photos)
+- `scripts/train-lora.sh` — Launch FLUX LoRA training with sensible defaults
+- `scripts/generate-from-lora.sh` — Test generation with the trained LoRA
+- Note: Mac MPS training proved impractical (Float8/quantization incompatible, ~183s/step with CPU fallback). Training relocated to external PC with NVIDIA GPU.
+
+**M5d-2 — Character metadata: LoRA fields**
+- Add to Character type and metadata.json:
+  - `lora_path`: path to .safetensors file stored in character dir
+  - `lora_filename`: original filename for display
+  - `lora_file_size`: file size in bytes for display
+  - `trigger_word`: prompt keyword that activates identity (optional, empty by default — only needed for character LoRAs trained with a trigger word)
+- CharacterManager: copy imported .safetensors into `~/.imagen-heap/characters/<id>/lora/`
+- CharacterManager: new methods `set_lora(character_id, lora_file_path, trigger_word)` and `remove_lora(character_id)`
+- Update `update_character` to accept `trigger_word` updates
+- RPC handlers: `set_character_lora`, `remove_character_lora`
+- Rust commands + TypeScript wrappers for the new RPCs
+
+**M5d-3 — Frontend: LoRA as identity method**
+- CharacterCreateDialog: Add "Trained LoRA" as 5th identity method card in the adapter type grid
+  - Icon: sparkle/wand or similar to convey "custom trained"
+  - Description: "Import LoRA · best quality"
+  - When selected, show:
+    - File picker button for .safetensors file (Tauri file dialog, filter: .safetensors)
+    - Display imported filename + file size
+    - Trigger word text input (default "ohwx", editable)
+    - Optional: thumbnail/reference image picker (for character avatar since LoRA characters may not have reference images)
+  - LoRA file is imported (copied) on character save, not on file selection
+- CharacterAvatarRow: show "LoRA" badge on character avatars that use LoRA adapter type
+- CharacterStrengthControl: 
+  - LoRA type needs no adapter downloads (no inline download prompt)
+  - Show "LoRA · trigger: ohwx" info badge
+  - Strength maps to LoRA scale (0.0–1.2)
+- Edit mode: allow changing LoRA file and trigger word
+
+**M5d-4 — Python: LoRA inference via MLX (mflux)**
+- MLXProvider: `text_to_image_with_lora(prompt, lora_path, lora_scale, ...)`
+  - Use mflux's native `--lora-paths` / `--lora-scales` support
+  - Trigger word is auto-prepended to prompt if not already present
+  - LoRA scale mapped from character_strength: 0.0–1.0 → 0.0–1.2
+- DiffusersProvider: `text_to_image_with_lora(prompt, lora_path, lora_scale, ...)`
+  - Load via `pipe.load_lora_weights(path)`, `pipe.fuse_lora(lora_scale=scale)`
+  - Unload/unfuse when switching characters or adapter types
+  - Fallback path if MLX has issues with a specific LoRA
+- Memory management: unload previous LoRA before loading new one
+
+**M5d-5 — Orchestrator: LoRA routing**
+- New `adapter_type: "lora"` in GenerationConfig
+- Orchestrator resolves LoRA characters:
+  - Reads `lora_path` and `trigger_word` from character metadata
+  - Prefers MLX provider (fast) — routes to `MLXProvider.text_to_image_with_lora()`
+  - Falls back to DiffusersProvider if MLX LoRA loading fails
+  - Auto-prepends trigger word to prompt
+- `resolved_adapter` metadata: "lora-mlx" or "lora-diffusers"
+- LoRA strength mapped from character_strength slider (0.0–1.0 → 0.0–1.2 scale)
+- Metadata records: adapter_type=lora, lora_path, lora_scale, trigger_word
+
+#### Phase 2: In-App Training Wizard (M5d-6 through M5d-8) — Future
+
+**M5d-6 — Training wizard UI**
+- Step 1: Select/upload 15-50 reference photos with quality validation
+- Step 2: Auto-caption generation (using BLIP or manual review)
+- Step 3: Configure training (steps, trigger word, quality tier)
+- Step 4: Progress view with sample image previews during training
+
+**M5d-7 — Python: Training pipeline**
+- Wrap ai-toolkit training as a Python module callable from sidecar
+- Progress streaming via JSON-RPC notifications (step, loss, sample images)
+- Training runs in background thread, interruptible
+- Auto-save checkpoints, resume support
+
+**M5d-8 — Cloud training option**
+- Optional: Replicate/RunPod API integration for faster training (~20min vs 2-4hrs)
+- User provides API key, training runs in cloud, LoRA downloaded on completion
+- Cost estimate shown before starting (~$3-5 per training run)
+
+**Deliverable (Phase 1):** ✅ Users train a face LoRA externally (PC with GPU, cloud, or CLI scripts), import the .safetensors file into a character card via the app UI, and generate images with dramatically better facial likeness using the fast MLX path. The trained LoRA integrates seamlessly with the existing generation pipeline and character system. Identity method selection uses a clean dropdown (not a grid). Trigger word is optional (style LoRAs don't need one). A pre-quantized FLUX.1-dev model (`flux-dev-mflux-q8`) is available for fast native inference (~2-4s/step vs ~20s/step with on-the-fly quantization). Memory management ensures only one full model is in memory at a time.
+
+**Deliverable (Phase 2):** One-click training wizard in the app with progress tracking, sample previews, and optional cloud acceleration.
 
 ---
 
@@ -1020,6 +1380,51 @@ The Community Hub solves the "scientific parameters" problem: generation quality
 
 ---
 
+### Distribution & Packaging
+
+**Goal:** Non-developer users can install and run Imagen Heap from a `.app` bundle without manual Python setup.
+
+#### Current Implementation: Option A — Bundled setup.sh + First-Launch Dialog ✅
+
+The `.app` bundle includes `scripts/setup.sh` and the full Python source in `Contents/Resources/`. On launch, the Rust backend checks for a Python virtual environment at `~/.imagen-heap/venv/`. If found, it uses the venv interpreter; otherwise, it falls back to system `python3`. If the sidecar fails to start and no venv exists, a native macOS dialog appears with instructions to run the setup script:
+
+```
+bash "/path/to/Imagen Heap.app/Contents/Resources/scripts/setup.sh"
+```
+
+**What `setup.sh` does:**
+1. Checks for macOS + Apple Silicon
+2. Installs Homebrew if missing
+3. Installs Python 3.12 via Homebrew if needed
+4. Creates a virtual environment at `~/.imagen-heap/venv/`
+5. Installs all Python dependencies (mflux, diffusers, torch, insightface, etc.)
+6. Verifies installation with import checks
+7. Takes ~5-10 minutes on first run
+
+**Python interpreter resolution (in Rust):**
+1. `~/.imagen-heap/venv/bin/python3` — preferred (venv from setup.sh)
+2. `python3` — fallback (system/Homebrew Python)
+
+**Tauri bundle configuration:**
+```json
+"bundle": {
+  "resources": {
+    "../scripts/setup.sh": "scripts/setup.sh",
+    "../python/src/imagen_heap/": "python/src/imagen_heap/"
+  }
+}
+```
+
+#### Future: Option B — In-App Setup Wizard
+
+Instead of opening Terminal, the first-launch experience runs `setup.sh` as a child process from within the app, with a beautiful progress screen showing real-time status ("Installing Python…", "Setting up environment…", "Almost ready!"). This integrates with the existing FirstRunWizard and keeps the user inside the app the entire time. Implementation deferred to M9 polish.
+
+#### Future: Option C — Fully Embedded Python Runtime
+
+Use `python-build-standalone` or `conda-pack` to bundle a complete Python 3.12 + all dependencies inside the `.app` bundle (~2-4 GB). Zero setup required — true drag-to-Applications experience. Requires significant packaging work, code signing complexity, and a strategy for updating Python deps. Deferred to post-V1.0.
+
+---
+
 ## Directory Structure
 
 ```
@@ -1237,7 +1642,11 @@ M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) ✅ → M4 (Styles
                          │                                        │
                          ├→ M3 (Models) ✅ ───────────────────────┤
                          │                                        │
-                         ├→ M5 (Characters) ──────────────────────┤
+                         ├→ M5 (Characters) ✅ ───────────────────┤
+                         │       │                                │
+                         │       └→ M5b (Multi-Runtime/IP-Adapter)┤
+                         │               │                        │
+                         │               └→ M5c (SDXL FaceID) ───┤
                          │                                        │
                          └→ M6 (Pose) ────────────────────────────┤
                                                                   │
@@ -1248,7 +1657,7 @@ M1 (Scaffold) ✅ → M2 (Generation) ✅ → M2b (Inference) ✅ → M4 (Styles
                     M9 (Export & Polish) ←── all above ──────────┘
 ```
 
-M1 → M2 → M2b is strictly sequential. M3 was built in parallel with M2b. After M2b, milestones M4–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M9 is the integration and polish phase that depends on all others.
+M1 → M2 → M2b is strictly sequential. M3 was built in parallel with M2b. After M2b, milestones M4–M8 can be partially parallelized (M5 and M6 depend on M2 but are independent of each other; M7 depends on M3 for the model manager integration; M8 depends on M2 for the generation pipeline). M5b depends on M5 (character system + adapter management must exist first). **M5c depends on M5b** (multi-provider routing and adapter management must exist first; extends DiffusersProvider with SDXL pipeline). M9 is the integration and polish phase that depends on all others.
 
 ---
 

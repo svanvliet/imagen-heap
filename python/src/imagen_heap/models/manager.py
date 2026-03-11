@@ -193,16 +193,38 @@ class ModelManager:
                 def _monitor_progress() -> None:
                     while not stop_monitor.is_set():
                         size = self._dir_size_fast(cache_dir)
-                        progress_callback(model_id, min(size, total_bytes), total_bytes)
+                        # Cap at 95% while downloading to avoid premature 100%
+                        cap = int(total_bytes * 0.95)
+                        progress_callback(model_id, min(size, cap), total_bytes)
                         stop_monitor.wait(1.5)
 
                 monitor = threading.Thread(target=_monitor_progress, daemon=True)
                 monitor.start()
 
+            # For diffusers models (SDXL etc.) only download fp16 component
+            # files — skip monolithic root-level checkpoints, fp32 duplicates,
+            # onnx, flax, openvino, and example LoRAs.  Saves ~15GB+ on SDXL.
+            allow_patterns = None
+            ignore_patterns = None
+            if entry.architecture != "flux":
+                allow_patterns = [
+                    "**/*.fp16.safetensors",  # fp16 weight files only
+                    "**/*.json",              # component configs
+                    "**/*.txt",               # tokenizer vocabs
+                    "**/*.model",             # sentencepiece models
+                    "*.json",                 # root model_index.json
+                    "*.txt",                  # root configs
+                ]
+                ignore_patterns = [
+                    "vae_1_0/**",             # duplicate VAE in SDXL base repo
+                ]
+
             local_path = snapshot_download(
                 repo_id=entry.hf_repo_id,
                 repo_type="model",
                 token=token or None,
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
             )
 
             # Stop monitor and send final 100% progress

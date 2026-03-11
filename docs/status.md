@@ -1,8 +1,8 @@
 # Implementation Status
 
-## Current Phase: M4 — Style Presets & Prompt Tools ✅ | Polish pass complete | v0.1.0 released
+## Current Phase: M5d ✅ Complete — LoRA Character Identity (Import & Inference) | M6 (Pose & Composition Control) next
 
-**Next up:** M5 (Gallery & History)
+**Branch:** `feature/character-system`
 
 ### Progress Log
 
@@ -200,6 +200,40 @@
   - Icon border doubled to 50px (2× thicker) for more visible inner stroke
   - Added `image-png` Tauri feature + `window.set_icon()` in debug builds so custom icon shows during `./run.sh`
 
+#### 2026-03-08
+
+- **M5 — Character System** (on `feature/character-system` branch):
+  - **feat(m5):** Character CRUD system — CharacterManager (JSON file storage), 5 RPC handlers, 5 Rust Tauri commands, Zustand character store
+  - **feat(m5):** Character UI — CharacterAvatarRow (horizontal scroll, accent ring, right-click delete), CharacterCreateDialog (native file picker, image preview grid), CharacterStrengthControl (3 presets + slider)
+  - **chore:** Added Alice in Wonderland reference images for character testing (`examples/characters/alice-in-wonderland/source/`)
+  - **docs:** Redux adapter research added to `docs/research.md` §8 — confirmed IP-Adapter/InstantID/PuLID unavailable in mflux, Redux chosen as best native option
+  - **feat(m5.5):** Redux adapter integration — `Flux1Redux` wired into MLXProvider with `text_to_image_with_character()`, model compatibility validation (requires dev, not schnell), progress callbacks refactored for both model types
+  - **docs:** Added adapter management requirements (FR-058–062b) to `docs/requirements.md` §5.5b
+  - **feat(m5.6):** Full adapter management system — `AdapterManager` class, 3 RPC handlers, 3 Rust commands, Zustand adapter store, Model Manager rewritten with "Models" | "Adapters" tab bar, AdapterCard component, inline Redux download in CharacterStrengthControl
+  - **fix:** Adapter auth — AdapterManager was reading HF token from wrong path (`~/.imagen-heap/.hf_token` → `~/.imagen-heap/models/.hf_token`), fixed error classification (token+gated=LICENSE_REQUIRED, not AUTH_REQUIRED)
+  - **fix:** Generation timeout — Redux generation takes ~11.5 min on M3 Max (687s for 25 steps + 5 ref images), but Rust timeout was 600s. Increased to 1800s (30 min). Added try/except in ProgressReporter.call_in_loop for silent callback error logging.
+  - **Research:** Redux produces images with similar style/aesthetic to reference but NOT precise facial identity — this is a fundamental limitation of the adapter. Investigated mflux variants (`concept_attention`, `kontext`, `in_context`). IP-Adapter/PuLID still not available in mflux (latest version 0.16.9). Future opportunity: monitor mflux for native identity adapters.
+
+### What's Done (M5 status)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| 5.1 Identity adapter research | ✅ Done | Redux chosen (only viable native option in mflux) |
+| 5.2 Character Card CRUD | ✅ Done | CharacterManager, JSON storage, RPC handlers, Rust commands |
+| 5.3 Character Card UI | ✅ Done | AvatarRow, CreateDialog, StrengthControl |
+| 5.4 Generation with character | ✅ Done | Config extended, metadata wiring, last_used_at tracking |
+| 5.5 Redux adapter integration | ✅ Done | MLXProvider Flux1Redux, pipeline routing, model compat check |
+| 5.6 Adapter management | ✅ Done | Registry, manager, download/delete, Model Manager tab, inline download |
+| 5.7 Identity research | 📋 Noted | Redux = holistic style, not face-specific. Awaiting mflux upstream |
+
+### Known Issues (M5)
+
+| Issue | Severity | Notes |
+|-------|----------|-------|
+| Progress callbacks silent during Redux generation | Low | Callbacks registered but never fire. Try/except logging added — needs testing. |
+| Redux not face-specific | Medium | Fundamental limitation — images look "similar" but don't match facial identity. Documented tuning tips. |
+| Redux generation slow (~11.5 min) | Low | Expected for dev-q8 + 25 steps + 5 ref images on M3 Max. Timeout increased to 30 min. |
+
 ### What's Done (M4 status)
 
 | Task | Status | Notes |
@@ -280,8 +314,91 @@
 | `48d0e43` | — | fix: thicker icon border (2x), set window icon in dev mode |
 | `a78e218` | — | docs: update status.md and plan.md — M4 complete, polish pass done |
 | `a530998` | — | docs: add detailed README with screenshots, architecture, and roadmap |
+| `086e870` | — | feat: build.sh release automation (--release tag, --notes) |
+| `35da434` | M5 | feat(m5): character system — CRUD, avatar row, creation dialog, strength control |
+| `d19fa5b` | M5 | chore: add Alice in Wonderland reference images for character testing |
+| `396d430` | M5 | docs: Redux adapter research + M5.5 implementation plan |
+| `09c1a87` | M5.5 | feat(m5.5): Redux adapter integration for character-consistent generation |
+| `d19d38b` | M5.6 | docs: add adapter management requirements (FR-058–062b) and M5.6 plan |
+| `525f6f5` | M5.6 | feat(m5.6): adapter management system with Model Manager tab + inline download |
+| `edac91f` | M5.6 | fix: adapter auth — use saved HF token + correct LICENSE_REQUIRED detection |
+| `e118181` | M5.6 | fix: increase generate timeout to 30min for Redux + add callback error logging |
+| `c83be4c` | M5 | docs: update status, plan, and research for M5 completion |
+| `02a4a5f` | M5 | feat(m5): character edit — context menu Edit, dual-purpose dialog, add/remove ref |
+| `6fe0fad` | M5b | docs: multi-runtime research, IP-Adapter plan, requirements update |
+| `cd3730a` | M5b | feat(m5b): multi-provider routing + IP-Adapter adapter registry |
+| `7fe7e21` | M5b | feat(m5b): adapter type UI selector + provider status badges |
+| `0e0c7df` | M5b | feat: store inference_provider and resolved_adapter in generation metadata |
+| `1094fcc` | M5b | fix: re-register CPU offload hooks after IP-Adapter/CLIP encoder load |
+| `b49dca0` | M5b | fix: adapter download prompt race condition + generalize for all adapter types |
+| `d71636a` | M5b | fix: pass HF token to DiffusersProvider + improve reference image preprocessing |
+| `6094306` | M5b | docs: update status and plan for M5b progress (7/8 tasks done) |
+
+### M5b Progress (Multi-Runtime & IP-Adapter)
+| Task | Status |
+|------|--------|
+| M5b-1: DiffusersProvider class | ✅ |
+| M5b-2: IP-Adapter loading | ✅ |
+| M5b-3: Provider routing | ✅ |
+| M5b-4: Dependencies | ✅ |
+| M5b-5: Adapter registry | ✅ |
+| M5b-6: Adapter type UI | ✅ |
+| M5b-7: Provider status | ✅ |
+| M5b-8: End-to-end testing | ⚠️ Functional but limited — XLabs IP-Adapter uses CLIP (not face identity) |
+
+**Key finding:** XLabs IP-Adapter v2 for FLUX uses CLIP embeddings (style/composition), NOT facial identity. Generated images don't preserve face likeness. This is an architectural limitation, not a bug. Solution: M5c adds SDXL + FaceID PlusV2 with InsightFace.
+
+### M5c Progress (SDXL + IP-Adapter FaceID)
+| Task | Status |
+|------|--------|
+| M5c-1: InsightFace integration | ✅ |
+| M5c-2: SDXL FaceID provider support | ✅ |
+| M5c-3: Orchestrator routing for FaceID | ✅ |
+| M5c-4: Adapter registry entries | ✅ |
+| M5c-5: FaceID adapter type UI | ✅ |
+| M5c-6: Adapter comparison UX | ✅ |
+| M5c-7: Testing and validation | 🔲 Pending — needs user end-to-end test with SDXL model download |
 
 ### Test Counts
-- Python: 35 tests passing
+- Python: 55 tests passing (14 new FaceID tests)
 - Frontend: 16 tests passing (vitest)
 - Rust: cargo check passes
+
+### M5d Progress (LoRA Character Identity — Import & Inference)
+
+**Pivot:** On-device LoRA training on Apple Silicon MPS proved impractical (Float8 quantization unsupported, qint8 falls back to CPU at ~183s/step). Training relocated to external PC with NVIDIA GPU (5070 Ti). Focus shifted to **LoRA import + inference integration** in the app.
+
+**Key discovery:** mflux 0.16.8+ natively supports `--lora-paths` and `--lora-scales`, enabling fast MLX LoRA inference (~60s) without the slower diffusers/PyTorch path.
+
+| Task | Status |
+|------|--------|
+| M5d-1: CLI training scripts | ✅ Done (scripts work, training runs on external PC) |
+| M5d-2: Character metadata — LoRA fields | ✅ Done |
+| M5d-3: Frontend — LoRA identity method UI | ✅ Done |
+| M5d-4: Python — LoRA inference (MLX + diffusers) | ✅ Done |
+| M5d-5: Orchestrator — LoRA routing | ✅ Done |
+
+### Post-M5d Fixes & Improvements
+
+| Fix | Description |
+|-----|-------------|
+| Dialog freeze | Removed backend `getAvailableProviders` RPC from character dialog — it triggered heavy imports (torch, diffusers, insightface) on the main thread. Dialog is now pure metadata, opens instantly. |
+| Identity method UX | Replaced cramped 5-column button grid with clean `<select>` dropdown for adapter type selection. |
+| Trigger word optional | Trigger word defaults to empty (was "ohwx"). Style LoRAs don't need one — only character LoRAs trained with a trigger word require it. |
+| Memory thrashing | Standard and LoRA generation now unload competing model instances before loading. Two full FLUX models (~16GB each) in memory simultaneously caused swap thrashing and ~20s/step performance. |
+| Pre-quantized FLUX.1-dev | Added `flux-dev-mflux-q8` (dhairyashil/FLUX.1-dev-mflux-8bit, ~18GB) as a pre-quantized model. The existing `flux-dev-q8` downloads full bf16 weights (~33GB) and quantizes on-the-fly, resulting in ~20s/step. Pre-quantized model restores expected ~2-4s/step. Quality button auto-selects mflux variants when available. |
+| Provider checks lightweight | `is_available()` checks for diffusers and face_embedding now use `importlib.util.find_spec()` instead of importing heavy modules. Results cached after first call. |
+| Quality preset timing | Quality preset: 25→20 steps, time estimates updated to match real M3 Max performance (~45s schnell, ~5min dev). |
+| Filmstrip placeholder | Animated placeholder thumbnail appears in filmstrip during generation. Click other thumbnails to browse history while generating; click placeholder to return to progress view. |
+| Cancel generation | Real cancel support: Python threading.Event checked at each step, Rust command, TypeScript API, cancel button in progress view + placeholder context menu. |
+
+### Distribution & Packaging
+
+| Item | Status |
+|------|--------|
+| `scripts/setup.sh` — one-time Python environment setup | ✅ Done |
+| Tauri bundle resources — setup.sh + Python source in .app | ✅ Done |
+| Rust venv detection — prefer `~/.imagen-heap/venv/bin/python3` | ✅ Done |
+| First-launch dialog — shows setup instructions when Python missing | ✅ Done |
+| Option B: In-app setup wizard (future) | 📋 Documented in plan.md |
+| Option C: Embedded Python runtime (future) | 📋 Documented in plan.md |

@@ -18,6 +18,11 @@ export async function getBackendStatus(): Promise<string> {
   return invoke("get_backend_status");
 }
 
+/** Cancel the current generation */
+export async function cancelGeneration(): Promise<void> {
+  await invoke("cancel_generation");
+}
+
 /** Request image generation */
 export async function generateImage(config: {
   prompt: string;
@@ -31,6 +36,9 @@ export async function generateImage(config: {
   model_id: string;
   sampler: string;
   scheduler: string;
+  character_id?: string | null;
+  character_strength?: number;
+  adapter_type?: string;
 }): Promise<{
   id: string;
   image_path: string;
@@ -111,4 +119,113 @@ export async function resetWizard(): Promise<{ success: boolean }> {
 /** Open the model's folder in the system file manager */
 export async function revealModelFolder(modelId: string): Promise<void> {
   return invoke("reveal_model_folder", { modelId });
+}
+
+// --- Character management ---
+
+/** List all characters */
+export async function listCharacters(): Promise<Array<{
+  id: string;
+  name: string;
+  description: string;
+  reference_images: string[];
+  thumbnail: string;
+  adapter_type: string;
+  created_at: string;
+  last_used_at: string | null;
+}>> {
+  return invoke("list_characters");
+}
+
+/** Create a new character */
+export async function createCharacter(
+  name: string,
+  description: string,
+  referenceImagePaths: string[],
+): Promise<Record<string, unknown>> {
+  return invoke("create_character", { name, description, referenceImagePaths });
+}
+
+/** Update character metadata */
+export async function updateCharacter(
+  characterId: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return invoke("update_character", { characterId, updates });
+}
+
+/** Delete a character */
+export async function deleteCharacter(characterId: string): Promise<{ success: boolean; character_id: string }> {
+  return invoke("delete_character", { characterId });
+}
+
+/** Add a reference image to an existing character */
+export async function addReferenceImage(
+  characterId: string,
+  imagePath: string,
+): Promise<Record<string, unknown>> {
+  return invoke("add_reference_image", { characterId, imagePath });
+}
+
+/** Remove a reference image by index */
+export async function removeReferenceImage(
+  characterId: string,
+  imageIndex: number,
+): Promise<Record<string, unknown>> {
+  return invoke("remove_reference_image", { characterId, imageIndex });
+}
+
+/** Get a single character */
+export async function getCharacter(characterId: string): Promise<Record<string, unknown>> {
+  return invoke("get_character", { characterId });
+}
+
+/** Set a LoRA file for a character */
+export async function setCharacterLora(
+  characterId: string,
+  loraPath: string,
+  triggerWord: string,
+): Promise<Record<string, unknown>> {
+  return invoke("set_character_lora", { characterId, loraPath, triggerWord });
+}
+
+/** Remove LoRA from a character */
+export async function removeCharacterLora(
+  characterId: string,
+): Promise<Record<string, unknown>> {
+  return invoke("remove_character_lora", { characterId });
+}
+
+// --- Adapter management ---
+
+/** Get available runtime providers */
+export async function getAvailableProviders(): Promise<{ mlx: boolean; diffusers: boolean; faceid: boolean }> {
+  return invoke("get_available_providers");
+}
+
+/** List all adapters with download status */
+export async function getAdapters(): Promise<{ adapters: Array<{
+  id: string;
+  name: string;
+  adapter_type: string;
+  hf_repo_id: string;
+  compatible_models: string[];
+  file_size_bytes: number;
+  license_spdx: string;
+  description: string;
+  source_url: string;
+  requires_provider: string;
+  status: string;
+}> }> {
+  return invoke("get_adapters");
+}
+
+/** Download an adapter model */
+export async function downloadAdapter(adapterId: string): Promise<Record<string, unknown>> {
+  return invoke("download_adapter", { adapterId });
+}
+
+/** Delete a downloaded adapter */
+export async function deleteAdapter(adapterId: string): Promise<{ success: boolean; adapter_id: string }> {
+  return invoke("delete_adapter", { adapterId });
 }

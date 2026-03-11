@@ -74,9 +74,22 @@ export const useModelStore = create<ModelState>()(
     const downloaded = get().models.filter((m) => m.status === "downloaded");
     if (downloaded.length === 0) return;
 
+    // If user has manually selected a non-flux model (e.g. SDXL), respect it
+    const current = get().selectedModelId;
+    if (qualityHint && current) {
+      const currentModel = downloaded.find((m) => m.id === current);
+      if (currentModel && currentModel.architecture !== "flux") return;
+    }
+
     // If quality hint given, try to match schnell for fast, dev for quality
+    // Prefer pre-quantized mflux variants (faster native inference)
     if (qualityHint) {
       const pattern = qualityHint === "fast" ? "schnell" : "dev";
+      const mfluxMatch = downloaded.find((m) => m.id.includes(pattern) && m.id.includes("mflux"));
+      if (mfluxMatch) {
+        set({ selectedModelId: mfluxMatch.id });
+        return;
+      }
       const match = downloaded.find((m) => m.id.includes(pattern));
       if (match) {
         set({ selectedModelId: match.id });
@@ -85,7 +98,6 @@ export const useModelStore = create<ModelState>()(
     }
 
     // If current selection is still valid, keep it
-    const current = get().selectedModelId;
     if (current && downloaded.some((m) => m.id === current)) return;
 
     // Default to first downloaded (prefer default model)

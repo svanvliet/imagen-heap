@@ -4,7 +4,8 @@ import { useGenerationStore } from "@/stores/generation";
 import { useModelStore } from "@/stores/models";
 import { useBackendStore } from "@/stores/backend";
 import { usePromptHistoryStore } from "@/stores/promptHistory";
-import { generateImage } from "@/lib/tauri";
+import { useCharacterStore } from "@/stores/characters";
+import { generateImage, cancelGeneration } from "@/lib/tauri";
 import { randomSeed } from "@/lib/utils";
 
 interface ProgressPayload {
@@ -22,6 +23,7 @@ export function useGeneration() {
   const setProgress = useGenerationStore((s) => s.setProgress);
   const setCurrentImage = useGenerationStore((s) => s.setCurrentImage);
   const setGenerationError = useGenerationStore((s) => s.setGenerationError);
+  const cancelGenerationStore = useGenerationStore((s) => s.cancelGeneration);
   const backendStatus = useBackendStore((s) => s.status);
   const selectedModelId = useModelStore((s) => s.selectedModelId);
 
@@ -55,6 +57,10 @@ export function useGeneration() {
     try {
       console.log("[useGeneration] Starting generation with model:", modelId);
       const config = useGenerationStore.getState().getConfig();
+      const charState = useCharacterStore.getState();
+      const selectedChar = charState.selectedCharacterId
+        ? charState.characters.find((c) => c.id === charState.selectedCharacterId)
+        : null;
       const result = await generateImage({
         prompt: config.prompt,
         negative_prompt: config.negativePrompt,
@@ -67,6 +73,9 @@ export function useGeneration() {
         model_id: modelId,
         sampler: "euler",
         scheduler: "normal",
+        character_id: charState.selectedCharacterId,
+        character_strength: charState.characterStrength,
+        adapter_type: selectedChar?.adapter_type ?? "auto",
       });
 
       console.log("[useGeneration] Generation complete:", result);
@@ -92,19 +101,46 @@ export function useGeneration() {
           sampler: "euler",
           scheduler: "normal",
           modelId,
+          characterId: useCharacterStore.getState().selectedCharacterId ?? undefined,
+          characterStrength: useCharacterStore.getState().characterStrength,
           inferenceLocation: "local",
         },
         generationTimeMs: result.generation_time_ms,
         createdAt: result.created_at,
       });
     } catch (err) {
-      console.error("[useGeneration] Generation failed:", err);
-      setGenerationError(String(err));
+      const wasCancelled = useGenerationStore.getState().cancellationRequested;
+      if (!wasCancelled) {
+        console.error("[useGeneration] Generation failed:", err);
+        setGenerationError(String(err));
+      } else {
+        console.log("[useGeneration] Generation cancelled by user");
+      }
+    } finally {
+      // Always clean up generating state (cancel may have already done this,
+      // but the generate RPC response arrives asynchronously)
+      const { isGenerating } = useGenerationStore.getState();
+      if (isGenerating) {
+        setGenerating(false);
+        setProgress(null);
+      }
     }
   }, [setGenerating, setProgress, setCurrentImage, setGenerationError]);
 
+  const cancel = useCallback(async () => {
+    cancelGenerationStore();
+    try {
+      await cancelGeneration();
+    } catch (err) {
+      console.error("[useGeneration] Cancel RPC failed:", err);
+    }
+    setGenerating(false);
+    setProgress(null);
+  }, [cancelGenerationStore, setGenerating, setProgress]);
+
   return {
     generate,
+    cancel,
     canGenerate: backendStatus === "connected" && !!selectedModelId,
   };
 }
