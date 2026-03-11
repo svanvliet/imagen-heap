@@ -22,3 +22,7 @@ Source: [Wikimedia Commons](https://commons.wikimedia.org/wiki/Category:John_Ten
 
 Use these as reference images when creating a "Alice" character in Imagen Heap
 to test the Character System (M5).
+
+## TODO
+
+Consider creating a LoRA trained on these and more sample images.
