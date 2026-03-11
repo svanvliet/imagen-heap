@@ -229,3 +229,8 @@ export async function downloadAdapter(adapterId: string): Promise<Record<string,
 export async function deleteAdapter(adapterId: string): Promise<{ success: boolean; adapter_id: string }> {
   return invoke("delete_adapter", { adapterId });
 }
+
+/** Reveal a file in the system file manager (Finder on macOS) */
+export async function revealInFinder(path: string): Promise<void> {
+  return invoke("reveal_in_finder", { path });
+}

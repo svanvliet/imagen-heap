@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Sparkles } from "lucide-react";
-import { cancelGeneration as cancelGenerationRpc } from "@/lib/tauri";
+import { cancelGeneration as cancelGenerationRpc, revealInFinder } from "@/lib/tauri";
 import type { GenerationResult } from "@/types";
 
 export function Filmstrip() {
@@ -86,6 +86,14 @@ export function Filmstrip() {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     } catch (err) {
       console.error("Failed to copy:", err);
+    }
+  }, []);
+
+  const handleRevealInFinder = useCallback(async (item: GenerationResult) => {
+    try {
+      await revealInFinder(item.imagePath);
+    } catch (err) {
+      console.error("[Filmstrip] Reveal in Finder failed:", err);
     }
   }, []);
 
@@ -172,6 +180,13 @@ export function Filmstrip() {
                 className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               >
                 Copy Seed
+              </button>
+              <div className="h-px bg-border-default my-1" />
+              <button
+                onClick={() => { handleRevealInFinder(contextMenu.item!); setContextMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              >
+                Reveal in Finder
               </button>
               <div className="h-px bg-border-default my-1" />
               <button

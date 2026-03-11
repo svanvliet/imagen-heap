@@ -1,10 +1,10 @@
 import { useGenerationStore } from "@/stores/generation";
 import { useCharacterStore } from "@/stores/characters";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette, Trash2, User } from "lucide-react";
+import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette, Trash2, User, FolderOpen } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { cancelGeneration as cancelGenerationRpc } from "@/lib/tauri";
+import { cancelGeneration as cancelGenerationRpc, revealInFinder } from "@/lib/tauri";
 import { STYLE_PRESETS } from "@/lib/constants";
 
 function ElapsedTimer() {
@@ -108,6 +108,15 @@ export function Canvas() {
     if (!currentImage) return;
     deleteHistoryItem(currentImage.id);
   }, [currentImage, deleteHistoryItem]);
+
+  const handleRevealInFinder = useCallback(async () => {
+    if (!currentImage?.imagePath) return;
+    try {
+      await revealInFinder(currentImage.imagePath);
+    } catch (err) {
+      console.error("[Canvas] Reveal in Finder failed:", err);
+    }
+  }, [currentImage]);
 
   // Adjust menu position to stay within viewport
   useEffect(() => {
@@ -249,6 +258,13 @@ export function Canvas() {
                 <Copy size={14} />
               </button>
               <button
+                onClick={handleRevealInFinder}
+                className="p-1.5 rounded-md bg-bg-primary/80 backdrop-blur-sm border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-primary transition-colors"
+                title="Reveal in Finder"
+              >
+                <FolderOpen size={14} />
+              </button>
+              <button
                 onClick={handleDelete}
                 className="p-1.5 rounded-md bg-bg-primary/80 backdrop-blur-sm border border-border-default text-text-secondary hover:text-red-400 hover:bg-bg-primary transition-colors"
                 title="Delete"
@@ -353,6 +369,7 @@ export function Canvas() {
           <ContextMenuItem label="Copy Prompt" onClick={() => { handleCopyPrompt(); setShowContextMenu(null); }} />
           <ContextMenuItem label="Copy Seed" onClick={() => { handleCopySeed(); setShowContextMenu(null); }} />
           <div className="h-px bg-border-default my-1" />
+          <ContextMenuItem label="Reveal in Finder" onClick={() => { handleRevealInFinder(); setShowContextMenu(null); }} />
           <ContextMenuItem label="Delete" danger onClick={() => { handleDelete(); setShowContextMenu(null); }} />
         </div>
       )}

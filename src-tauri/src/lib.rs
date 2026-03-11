@@ -441,6 +441,19 @@ fn reveal_model_folder(state: State<SidecarState>, model_id: String, app_handle:
         .map_err(|e| format!("Failed to reveal folder: {}", e))
 }
 
+/// Reveal a file in the system file manager (Finder on macOS)
+#[tauri::command]
+fn reveal_in_finder(path: String, app_handle: AppHandle) -> Result<(), String> {
+    info!("Command: reveal_in_finder for {}", path);
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+    use tauri_plugin_opener::OpenerExt;
+    app_handle.opener().reveal_item_in_dir(p)
+        .map_err(|e| format!("Failed to reveal in Finder: {}", e))
+}
+
 // --- Adapter management commands ---
 
 /// Get available runtime providers (short timeout — avoids blocking UI on slow imports)
@@ -772,6 +785,7 @@ pub fn run() {
             mark_wizard_done,
             reset_wizard,
             reveal_model_folder,
+            reveal_in_finder,
             list_characters,
             create_character,
             update_character,
