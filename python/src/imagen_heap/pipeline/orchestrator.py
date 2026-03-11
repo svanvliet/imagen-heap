@@ -103,6 +103,24 @@ class PipelineOrchestrator:
         """Check if cancellation has been requested."""
         return self._cancel_event.is_set()
 
+    def _auto_load_model(self, config: GenerationConfig) -> None:
+        """Auto-load the model if needed. Must be called inside _generation_lock."""
+        if not hasattr(self.provider, 'load_model') or not hasattr(self.provider, '_loaded_model'):
+            return
+
+        needed = config.model_id
+        is_sdxl_model = False
+        try:
+            from imagen_heap.models import get_model_by_id as _get_model
+            _entry = _get_model(needed)
+            is_sdxl_model = _entry is not None and _entry.architecture == "sdxl"
+        except Exception:
+            is_sdxl_model = False
+
+        if not is_sdxl_model and self.provider._loaded_model != needed:
+            logger.info("Auto-loading model %s for generation", needed)
+            self.provider.load_model(needed)
+
     @property
     def diffusers_provider(self):
         """Lazy-load the DiffusersProvider only when needed."""
@@ -189,11 +207,13 @@ class PipelineOrchestrator:
 
         If reference_image_paths is provided and character_id is set,
         uses Redux mode for character-consistent generation.
+
+        Waits for any in-progress generation to finish before starting.
+        The Metal GPU cannot handle concurrent inference jobs.
         """
-        # Prevent concurrent generation — Metal GPU can't handle two jobs
-        if not self._generation_lock.acquire(timeout=0):
-            logger.warning("Generation already in progress, rejecting request")
-            raise RuntimeError("Another generation is already in progress. Please wait or cancel first.")
+        logger.debug("Waiting for generation lock...")
+        if not self._generation_lock.acquire(timeout=60):
+            raise RuntimeError("Timed out waiting for previous generation to finish.")
 
         try:
             return self._generate_locked(config, progress_callback, reference_image_paths)
@@ -207,15 +227,17 @@ class PipelineOrchestrator:
         reference_image_paths: list[str] | None = None,
     ) -> GenerationResult:
         """Internal generate — must be called with _generation_lock held."""
-        job_id = str(uuid.uuid4())[:8]
-        self._current_job_id = job_id
+        # Auto-load model if needed (inside lock so it's serialized)
+        self._auto_load_model(config)
 
-        # Check if cancel was requested before we started (e.g. during model loading)
+        # Check if cancel was requested during model loading or before we started
         if self._cancel_event.is_set():
             self._cancel_event.clear()
-            logger.info("Generation cancelled before start (job=%s)", job_id)
-            raise GenerationCancelled("Generation cancelled before start")
+            logger.info("Generation cancelled during setup")
+            raise GenerationCancelled("Generation cancelled during setup")
 
+        job_id = str(uuid.uuid4())[:8]
+        self._current_job_id = job_id
         self._cancel_event.clear()
         logger.info("Starting generation job=%s prompt='%s' steps=%d", job_id, config.prompt[:50], config.steps)
 

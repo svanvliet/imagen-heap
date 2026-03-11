@@ -176,25 +176,9 @@ def create_server() -> RpcServer:
             else:
                 logger.warning("Character '%s' has no valid reference images, falling back to standard generation", config.character_id)
 
-        # Auto-load model if provider supports it (skip SDXL — routed to DiffusersProvider)
-        if hasattr(provider, 'load_model') and hasattr(provider, '_loaded_model'):
-            needed = config.model_id
-            is_sdxl_model = False
-            try:
-                from imagen_heap.models import get_model_by_id as _get_model
-                _entry = _get_model(needed)
-                is_sdxl_model = _entry is not None and _entry.architecture == "sdxl"
-            except Exception:
-                is_sdxl_model = False
-            if not is_sdxl_model and provider._loaded_model != needed:
-                logger.info("Auto-loading model %s for generation", needed)
-                provider.load_model(needed)
-
-        # Check if cancel arrived during model loading
-        if orchestrator.is_cancelled():
-            orchestrator._cancel_event.clear()
-            logger.info("Generation cancelled during model loading")
-            raise GenerationCancelled("Generation cancelled during setup")
+        # Auto-load model — this is done inside orchestrator.generate() where the
+        # generation lock is held, ensuring model loading is serialized too.
+        # We just need to tell the orchestrator which model to auto-load.
 
         def on_progress(job_id: str, step: int, total: int, preview: str | None) -> None:
             _send_notification("progress", {
