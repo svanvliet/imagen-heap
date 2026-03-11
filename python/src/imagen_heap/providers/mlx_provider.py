@@ -404,11 +404,8 @@ class MLXProvider(RuntimeProvider):
             class ProgressReporter:
                 """InLoopCallback that reports progress to our callback."""
                 def call_in_loop(self, t, seed, prompt, latents, config, time_steps):
-                    try:
-                        current_step = t + 1
-                        callback(current_step, total_steps, None)
-                    except Exception as exc:
-                        logger.debug("Progress callback error (step %d): %s", t, exc)
+                    current_step = t + 1
+                    callback(current_step, total_steps, None)
 
             if hasattr(model, 'callback_registry') and isinstance(model.callback_registry, CallbackRegistry):
                 model.callback_registry.register(ProgressReporter())

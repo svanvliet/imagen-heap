@@ -109,8 +109,21 @@ export function useGeneration() {
         createdAt: result.created_at,
       });
     } catch (err) {
-      console.error("[useGeneration] Generation failed:", err);
-      setGenerationError(String(err));
+      const wasCancelled = useGenerationStore.getState().cancellationRequested;
+      if (!wasCancelled) {
+        console.error("[useGeneration] Generation failed:", err);
+        setGenerationError(String(err));
+      } else {
+        console.log("[useGeneration] Generation cancelled by user");
+      }
+    } finally {
+      // Always clean up generating state (cancel may have already done this,
+      // but the generate RPC response arrives asynchronously)
+      const { isGenerating } = useGenerationStore.getState();
+      if (isGenerating) {
+        setGenerating(false);
+        setProgress(null);
+      }
     }
   }, [setGenerating, setProgress, setCurrentImage, setGenerationError]);
 

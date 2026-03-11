@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Sparkles, Save, Copy, X, Hash, Clock, Maximize2, AlertCircle, Palette, Trash2, User } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { cancelGeneration } from "@/lib/tauri";
+import { cancelGeneration as cancelGenerationRpc } from "@/lib/tauri";
 import { STYLE_PRESETS } from "@/lib/constants";
 
 function ElapsedTimer() {
@@ -27,6 +27,20 @@ export function Canvas() {
   const generationError = useGenerationStore((s) => s.generationError);
   const viewingProgress = useGenerationStore((s) => s.viewingProgress);
   const deleteHistoryItem = useGenerationStore((s) => s.deleteHistoryItem);
+  const setGenerating = useGenerationStore((s) => s.setGenerating);
+  const setProgress = useGenerationStore((s) => s.setProgress);
+  const cancelGenerationStore = useGenerationStore((s) => s.cancelGeneration);
+
+  const handleCancel = useCallback(async () => {
+    cancelGenerationStore();
+    try {
+      await cancelGenerationRpc();
+    } catch (err) {
+      console.error("[Canvas] Cancel RPC failed:", err);
+    }
+    setGenerating(false);
+    setProgress(null);
+  }, [cancelGenerationStore, setGenerating, setProgress]);
 
   const [copied, setCopied] = useState(false);
   const [showContextMenu, setShowContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -154,7 +168,7 @@ export function Canvas() {
                   <ElapsedTimer />
                 </span>
                 <button
-                  onClick={() => { cancelGeneration().catch(() => {}); }}
+                  onClick={handleCancel}
                   className="p-0.5 rounded-full hover:bg-bg-hover text-text-muted hover:text-red-400 transition-colors"
                   title="Cancel generation"
                 >
@@ -201,7 +215,7 @@ export function Canvas() {
                 </div>
               </div>
               <button
-                onClick={() => { cancelGeneration().catch(() => {}); }}
+                onClick={handleCancel}
                 className="mt-1 px-3 py-1 text-xs text-text-muted hover:text-red-400 transition-colors"
               >
                 Cancel

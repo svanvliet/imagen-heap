@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Sparkles } from "lucide-react";
+import { cancelGeneration as cancelGenerationRpc } from "@/lib/tauri";
 import type { GenerationResult } from "@/types";
 
 export function Filmstrip() {
@@ -13,7 +14,20 @@ export function Filmstrip() {
   const selectHistoryItem = useGenerationStore((s) => s.selectHistoryItem);
   const deleteHistoryItem = useGenerationStore((s) => s.deleteHistoryItem);
   const setViewingProgress = useGenerationStore((s) => s.setViewingProgress);
-  const cancelGeneration = useGenerationStore((s) => s.cancelGeneration);
+  const cancelGenerationStore = useGenerationStore((s) => s.cancelGeneration);
+  const setGenerating = useGenerationStore((s) => s.setGenerating);
+  const setProgress = useGenerationStore((s) => s.setProgress);
+
+  const handleCancel = useCallback(async () => {
+    cancelGenerationStore();
+    try {
+      await cancelGenerationRpc();
+    } catch (err) {
+      console.error("[Filmstrip] Cancel RPC failed:", err);
+    }
+    setGenerating(false);
+    setProgress(null);
+  }, [cancelGenerationStore, setGenerating, setProgress]);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -169,7 +183,7 @@ export function Filmstrip() {
             </>
           ) : (
             <button
-              onClick={() => { cancelGeneration(); setContextMenu(null); }}
+              onClick={() => { handleCancel(); setContextMenu(null); }}
               className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
             >
               Cancel Generation
