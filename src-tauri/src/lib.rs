@@ -489,8 +489,18 @@ fn delete_adapter(state: State<SidecarState>, adapter_id: String) -> Result<serd
 fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, pending: Arc<Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>>>) -> Result<(Child, Box<dyn Write + Send>), String> {
     info!("Starting Python sidecar: {} {}", python_path, script_path);
 
+    // Derive PYTHONPATH from the script path so imagen_heap package is importable
+    // Script is at .../python/src/imagen_heap/main.py → we need .../python/src/
+    let python_src_dir = std::path::Path::new(script_path)
+        .parent()  // .../python/src/imagen_heap/
+        .and_then(|p| p.parent())  // .../python/src/
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    info!("Setting PYTHONPATH={}", python_src_dir);
+
     let mut child = Command::new(python_path)
         .arg(script_path)
+        .env("PYTHONPATH", &python_src_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
