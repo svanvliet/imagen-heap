@@ -91,6 +91,7 @@ class PipelineOrchestrator:
         self._diffusers_provider = None  # Lazy-loaded secondary provider
         self._current_job_id: str | None = None
         self._cancel_event = threading.Event()
+        self._generation_lock = threading.Lock()
         logger.info("PipelineOrchestrator initialized, output_dir=%s", self.output_dir)
 
     def cancel(self) -> None:
@@ -189,8 +190,32 @@ class PipelineOrchestrator:
         If reference_image_paths is provided and character_id is set,
         uses Redux mode for character-consistent generation.
         """
+        # Prevent concurrent generation — Metal GPU can't handle two jobs
+        if not self._generation_lock.acquire(timeout=0):
+            logger.warning("Generation already in progress, rejecting request")
+            raise RuntimeError("Another generation is already in progress. Please wait or cancel first.")
+
+        try:
+            return self._generate_locked(config, progress_callback, reference_image_paths)
+        finally:
+            self._generation_lock.release()
+
+    def _generate_locked(
+        self,
+        config: GenerationConfig,
+        progress_callback=None,
+        reference_image_paths: list[str] | None = None,
+    ) -> GenerationResult:
+        """Internal generate — must be called with _generation_lock held."""
         job_id = str(uuid.uuid4())[:8]
         self._current_job_id = job_id
+
+        # Check if cancel was requested before we started (e.g. during model loading)
+        if self._cancel_event.is_set():
+            self._cancel_event.clear()
+            logger.info("Generation cancelled before start (job=%s)", job_id)
+            raise GenerationCancelled("Generation cancelled before start")
+
         self._cancel_event.clear()
         logger.info("Starting generation job=%s prompt='%s' steps=%d", job_id, config.prompt[:50], config.steps)
 

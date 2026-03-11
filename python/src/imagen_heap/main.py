@@ -190,6 +190,12 @@ def create_server() -> RpcServer:
                 logger.info("Auto-loading model %s for generation", needed)
                 provider.load_model(needed)
 
+        # Check if cancel arrived during model loading
+        if orchestrator.is_cancelled():
+            orchestrator._cancel_event.clear()
+            logger.info("Generation cancelled during model loading")
+            raise GenerationCancelled("Generation cancelled during setup")
+
         def on_progress(job_id: str, step: int, total: int, preview: str | None) -> None:
             _send_notification("progress", {
                 "job_id": job_id,
