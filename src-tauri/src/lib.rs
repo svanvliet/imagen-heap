@@ -608,8 +608,8 @@ fn start_sidecar(python_path: &str, script_path: &str, app_handle: &AppHandle, p
                                 }
                             }
                         }
-                        Err(e) => {
-                            warn!("Failed to parse sidecar output: {} (line: {})", e, &l[..l.len().min(200)]);
+                        Err(_) => {
+                            debug!("Ignoring non-JSON sidecar output: {}", &l[..l.len().min(200)]);
                         }
                     }
                 }
